@@ -1,17 +1,18 @@
 version: '3.8'
 
 services:
-  postgres:
+  database:
     image: postgres:15-alpine
     container_name: dms_postgres
     environment:
-      POSTGRES_USER: dms_user
-      POSTGRES_PASSWORD: dms_password
-      POSTGRES_DB: dms_db
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secretpassword
+      POSTGRES_DB: app_db
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - db_data:/var/lib/postgresql/data
+      - ./database:/docker-entrypoint-initdb.d
 
   backend:
     build: ./backend
@@ -19,12 +20,24 @@ services:
     ports:
       - "5000:5000"
     environment:
-      - PORT=5000
-      - DATABASE_URL=postgresql://dms_user:dms_password@postgres:5432/dms_db
-    volumes:
-      - ./backend:/app
+      PORT: 5000
+      DB_HOST: database
+      DB_PORT: 5432
+      DB_USER: admin
+      DB_PASSWORD: secretpassword
+      DB_NAME: app_db
     depends_on:
-      - postgres
+      - database
+
+  frontend:
+    build: ./frontend
+    container_name: dms_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      REACT_APP_API_URL: http://localhost:5000/api
+    depends_on:
+      - backend
 
 volumes:
-  postgres_data:
+  db_data:
