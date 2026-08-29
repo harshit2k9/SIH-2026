@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>
+        SIH26 - Google Authenticator Setup
+    </title>
+
+
+    <style>
+
+        * {
+            box-sizing: border-box;
+        }
+
+
+        body {
+
+            margin: 0;
+
+            min-height: 100vh;
+
+            display: flex;
+
+            align-items: center;
+
+            justify-content: center;
+
+            padding: 30px;
+
+            background: #f3f4f6;
+
+            font-family:
+                Arial,
+                sans-serif;
+
+            color: #111827;
+
+        }
+
+
+        .card {
+
+            width: 500px;
+
+            max-width: 100%;
+
+            padding: 40px;
+
+            background: white;
+
+            border-radius: 14px;
+
+            box-shadow:
+                0 8px 30px
+                rgba(0, 0, 0, 0.1);
+
+            text-align: center;
+
+        }
+
+
+        h1 {
+            margin-top: 0;
+        }
+
+
+        .verified {
+
+            color: #047857;
+
+            font-weight: bold;
+
+        }
+
+
+        .steps {
+
+            text-align: left;
+
+            line-height: 1.7;
+
+            margin: 25px 0;
+
+        }
+
+
+        .qr-container {
+
+            margin: 25px auto;
+
+            padding: 15px;
+
+            width: fit-content;
+
+            background: white;
+
+            border:
+                1px solid #e5e7eb;
+
+            border-radius: 10px;
+
+        }
+
+
+        .qr-container img {
+
+            width: 240px;
+
+            max-width: 100%;
+
+        }
+
+
+        .manual {
+
+            margin-top: 20px;
+
+            padding: 15px;
+
+            background: #f3f4f6;
+
+            border-radius: 8px;
+
+        }
+
+
+        .secret {
+
+            margin-top: 8px;
+
+            padding: 10px;
+
+            font-family: monospace;
+
+            font-size: 16px;
+
+            overflow-wrap: anywhere;
+
+            background: white;
+
+            border-radius: 6px;
+
+            border:
+                1px solid #d1d5db;
+
+        }
+
+
+        label {
+
+            display: block;
+
+            margin-top: 25px;
+
+            margin-bottom: 8px;
+
+            font-weight: bold;
+
+        }
+
+
+        input {
+
+            width: 100%;
+
+            padding: 14px;
+
+            border:
+                1px solid #d1d5db;
+
+            border-radius: 8px;
+
+            text-align: center;
+
+            font-size: 22px;
+
+            letter-spacing: 6px;
+
+        }
+
+
+        button {
+
+            width: 100%;
+
+            margin-top: 20px;
+
+            padding: 14px;
+
+            border: none;
+
+            border-radius: 8px;
+
+            background: #111827;
+
+            color: white;
+
+            font-size: 16px;
+
+            font-weight: bold;
+
+            cursor: pointer;
+
+        }
+
+
+        button:hover {
+
+            background: #1f2937;
+
+        }
+
+
+        .error {
+
+            margin-top: 20px;
+
+            padding: 12px;
+
+            background: #fee2e2;
+
+            color: #991b1b;
+
+            border-radius: 7px;
+
+        }
+
+
+        .warning {
+
+            margin-top: 20px;
+
+            font-size: 13px;
+
+            line-height: 1.5;
+
+            color: #92400e;
+
+            background: #fffbeb;
+
+            padding: 12px;
+
+            border-radius: 7px;
+
+        }
+
+    </style>
+
+</head>
+
+
+<body>
+
+
+<div class="card">
+
+
+    <h1>
+        Secure Your Account
+    </h1>
+
+
+    <p class="verified">
+        ✓ Identity verification complete
+    </p>
+
+
+    <p>
+        Registration ID:
+        <strong>{{ user_uid }}</strong>
+    </p>
+
+
+    <div class="steps">
+
+        <strong>Google Authenticator Setup</strong>
+
+        <ol>
+
+            <li>
+                Open Google Authenticator on your phone.
+            </li>
+
+            <li>
+                Tap the + button.
+            </li>
+
+            <li>
+                Choose Scan a QR code.
+            </li>
+
+            <li>
+                Scan the QR code below.
+            </li>
+
+            <li>
+                Enter the generated 6-digit code.
+            </li>
+
+        </ol>
+
+    </div>
+
+
+    <div class="qr-container">
+
+        <img
+            src="data:image/png;base64,{{ qr_code }}"
+            alt="Google Authenticator QR Code"
+        >
+
+    </div>
+
+
+    <div class="manual">
+
+        <strong>
+            Can't scan the QR code?
+        </strong>
+
+        <p>
+            Enter this setup key manually:
+        </p>
+
+
+        <div class="secret">
+
+            {{ secret }}
+
+        </div>
+
+    </div>
+
+
+    {% if error %}
+
+    <div class="error">
+
+        {{ error }}
+
+    </div>
+
+    {% endif %}
+
+
+    <form
+        action="/mfa/verify"
+        method="POST"
+    >
+
+
+        <input
+            type="hidden"
+            name="user_uid"
+            value="{{ user_uid }}"
+        >
+
+
+        <label>
+            6-Digit Authentication Code
+        </label>
+
+
+        <input
+            type="text"
+            name="code"
+            maxlength="6"
+            pattern="[0-9]{6}"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            placeholder="000000"
+            required
+        >
+
+
+        <button type="submit">
+
+            Verify & Activate Account
+
+        </button>
+
+
+    </form>
+
+
+    <div class="warning">
+
+        Do not share the QR code or setup key.
+        Anyone who has this secret can generate
+        authentication codes for your account.
+
+    </div>
+
+
+</div>
+
+
+</body>
+
+</html>
