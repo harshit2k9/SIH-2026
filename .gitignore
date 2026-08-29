@@ -1,6 +1,28 @@
-node_modules/
+# Secrets - NEVER commit these
 .env
-*.log
-dist/
-build/
+keys/
+*.pem
+
+# Python virtual environment
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Uploaded/quarantined files (local testing artifacts)
+/tmp/sddms_quarantine/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Logs
+*.log

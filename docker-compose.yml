@@ -1,35 +1,57 @@
+version: "3.8"
+
 services:
-  database:
-    image: postgres:15-alpine
-    container_name: dms_postgres
+  postgres:
+    image: postgres:16
+    container_name: sddms_postgres
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: secretpassword
-      POSTGRES_DB: app_db
+      POSTGRES_USER: sddms_user
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_DB: sddms_db
     ports:
       - "5432:5432"
     volumes:
-      - db_data:/var/lib/postgresql/data
-      - ./database:/docker-entrypoint-initdb.d
+      - ./sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sddms_user -d sddms_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-  backend:
-    build: ./backend
-    container_name: dms_backend
-    ports:
-      - "8000:8000"
+  minio:
+    image: minio/minio:latest
+    container_name: sddms_minio
+    command: server /data --console-address ":9001"
     environment:
-      DATABASE_URL: postgresql://admin:secretpassword@database:5432/app_db
-    depends_on:
-      - database
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: change-this-in-production
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web console
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-  frontend:
-    build: ./frontend
-    container_name: dms_frontend
+  clamav:
+    image: clamav/clamav:latest
+    container_name: sddms_clamav
     ports:
-      - "5173:5173"
-    environment:
-      - VITE_API_URL=http://localhost:8000
-    depends_on:
-      - backend
+      - "3310:3310"
+    volumes:
+      - clamdata:/var/lib/clamav
+    # First boot downloads virus DB signatures — can take a few minutes.
+    healthcheck:
+      test: ["CMD", "sh", "-c", "echo PING | nc localhost 3310"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
 volumes:
-  db_data:
+  pgdata:
+  miniodata:
+  clamdata:

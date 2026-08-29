@@ -1,79 +1,63 @@
-# 🚀 SIH 2026 Project: Secure Digital Document Management System for Legal and Investigation Documents
+# Secure Digital Document Management System — Upload Service
 
-[![SIH 2026](https://img.shields.io/badge/Smart%20India%20Hackathon-2026-blue.svg)](https://sih.gov.in)
-[![Build Status](https://img.shields.io/badge/Status-In%20Development-green.svg)](#)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg?logo=docker&logoColor=white)](#)
-[![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg?logo=fastapi&logoColor=white)](#)
-[![React](https://img.shields.io/badge/Frontend-React%20%2B%20Vite-61DAFB.svg?logo=react&logoColor=black)](#)
-[![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-4169E1.svg?logo=postgresql&logoColor=white)](#)
+Low-latency, security-hardened document ingestion API for legal/investigation
+case files. Built for SIH: FastAPI + asyncpg + PostgreSQL + MinIO + ClamAV.
 
----
+## Why these choices (quick reference)
 
-## 📌 Project Overview
+| Concern | Decision |
+|---|---|
+| DB driver | `asyncpg` — fastest async PostgreSQL driver, binary protocol, no ORM overhead |
+| File storage | MinIO (S3-compatible) — files never touch the DB as BLOBs, keeps Postgres fast |
+| Large file handling | Streamed in 1MB chunks (`aiofiles`) — flat memory usage, no event-loop blocking |
+| Integrity | SHA-256 computed during streaming, stored + verifiable later |
+| Chain of custody | Hash-chained `audit_log` table — tampering with history breaks the chain |
+| Auth | JWT RS256, algorithm pinned server-side (prevents alg-confusion forgery) |
+| Token revocation | `revoked_tokens` table checked per-request (swap for Redis SET at scale) |
+| File type check | `python-magic` on actual bytes, not filename/Content-Type (both spoofable) |
+| Malware | ClamAV via async `INSTREAM` — streamed straight from the quarantined file |
+| SQL injection | 100% parameterized queries via asyncpg (`$1, $2...`), zero string-built SQL |
+| Timing attacks | `hmac.compare_digest` for any secret/signature comparisons |
+| Rate limiting | `slowapi`, per-IP/user, configurable per route |
 
-* **Project Name:** Secure Digital Document Management System for Legal and Investigation Documents
-* **Project Code:** 26190
-* **Category:** Blockchain & Cybersecurity
+## Setup
 
-### 📝 Project Description
-As the volume of legal and investigation-related data continues to grow, there is an increasing need for a secure, centralized, and intelligent document management system that ensures data integrity, accessibility, confidentiality, and efficient case management. Modern technologies such as Cloud Computing, Artificial Intelligence (AI), Blockchain, Digital Signatures, and Secure Access Control can significantly improve the management and security of legal and investigative documents.
+```bash
+# System dependency for python-magic
+sudo apt-get install libmagic1
 
-This project delivers a Secure Digital Document Management System (DMS) enabling law enforcement agencies, legal institutions, and investigative departments to securely store, organize, manage, retrieve, and share sensitive legal and investigation documents.
+pip install -r requirements.txt
+cp .env.example .env   # fill in real secrets
 
----
+# Generate RS256 keypair (auth service holds the private key; API only needs public)
+mkdir -p keys
+openssl genrsa -out keys/private.pem 2048
+openssl rsa -in keys/private.pem -pubout -out keys/public.pem
 
-## ✨ Key Features
+# Apply schema
+psql "$DATABASE_URL" -f sql/schema.sql
 
-* **Digitized & Centralized Storage:** Centralized document repository with encrypted storage at rest.
-* **Role-Based Access Control (RBAC):** Granular authorization and access control ensuring strict document confidentiality.
-* **Tamper-Evident Integrity:** Immutable logging and cryptographic verification to prevent unauthorized modifications.
-* **Complete Audit Trail:** Real-time tracking and logging of all document activities, access attempts, and edits.
-* **Intelligent Search & Retrieval:** Indexed search functionality for rapid access to critical case files.
-* **Collaborative & Secure Sharing:** Cross-department collaboration tools designed for legal and investigative workflows.
-* **Regulatory Compliance:** Built to adhere to legal and regulatory data security standards.
+# Run (production: behind nginx/traefik with TLS termination)
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 --loop uvloop --http httptools
+```
 
----
+## Connection pool tuning notes
 
-## 👥 Team Members & Roles
+- `min_size=10, max_size=30` is a reasonable starting point for moderate
+  concurrent load on a single Postgres instance. Rule of thumb: start near
+  `2 × CPU_cores` on the DB server and load-test upward.
+- If you put **PgBouncer** in front of Postgres in transaction-pooling mode,
+  set `DB_STATEMENT_CACHE_SIZE=0` — prepared statement caching is
+  incompatible with transaction pooling.
+- `statement_timeout=15000` (15s) at the session level prevents a runaway
+  query from holding a pool connection hostage indefinitely.
 
-| Name | Primary Role | Domain & Responsibilities |
-| :--- | :--- | :--- |
-| **Harshit Kumar** | 🌐 **Full Stack Development** | System integration, CI/CD, deployment infrastructure, container orchestration, and cross-tier feature bridging. |
-| **Hansika** | 🎨 **Frontend Lead** | User interfaces, document viewers, role-based dashboards, and client-side security. |
-| **Manas Roy** | ⚙️ **API Team** | REST API development, authentication, authorization, and storage engine implementation. |
-| **Hrishit Khurana** | ⚙️ **API Team** | REST API development, authentication, authorization, and storage engine implementation. |
-| **Akshat** | 💾 **Database Team** | Schema design, immutable logging, encryption at rest, and search indexing. |
-| **Ansh Goyal** | 💾 **Database Team** | Schema design, immutable logging, encryption at rest, and search indexing. |
+## Next steps I'd recommend
 
----
-
-## 🛠️ Tech Stack & Tools
-
-* **Frontend:** React + Vite + Tailwind CSS / JavaScript (ES Modules)
-* **Backend API:** Python FastAPI + Uvicorn
-* **Database:** PostgreSQL 15
-* **DevOps & Infrastructure:** Docker, Docker Compose, GitHub Codespaces
-
----
-
-## 🏗️ Project Architecture
-
-```text
-               ┌────────────────────────────────────────┐
-               │        Client Browser (Vite UI)        │
-               │         http://localhost:5173          │
-               └───────────────────┬────────────────────┘
-                                   │
-                                   │ REST API Calls
-                                   ▼
-               ┌────────────────────────────────────────┐
-               │       Python FastAPI Backend           │
-               │         http://backend:8000            │
-               └───────────────────┬────────────────────┘
-                                   │
-                                   │ SQL Queries
-                                   ▼
-               ┌────────────────────────────────────────┐
-               │         PostgreSQL Database            │
-               │         http://database:5432           │
-               └────────────────────────────────────────┘
+1. A separate **auth service** that issues short-lived (5–15 min) RS256
+   access tokens + refresh tokens — not built here, this API only verifies.
+2. A **download/retrieval endpoint** using short-TTL presigned MinIO URLs
+   (function already stubbed in `services/storage.py`).
+3. Move ClamAV daemon and MinIO into Docker Compose for the demo.
+4. Load test with `locust` or `k6` against the upload endpoint to validate
+   the pool sizing under your actual expected concurrency.

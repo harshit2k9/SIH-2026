@@ -1,8 +1,0 @@
-fastapi
-uvicorn[standard]
-psycopg2-binary
-sqlalchemy
-bcrypt
-jinja2
-python-multipart
-itsdangerous

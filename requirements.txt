@@ -1,0 +1,11 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6        # includes uvloop + httptools for low-latency event loop
+asyncpg==0.29.0                  # fastest async PostgreSQL driver
+aiofiles==24.1.0                 # non-blocking file I/O
+aioboto3==13.1.1                 # async S3-compatible client (works with MinIO)
+python-multipart==0.0.9          # required by FastAPI for form/file parsing
+pyjwt[crypto]==2.9.0             # RS256 JWT verification
+python-magic==0.4.27             # magic-byte MIME detection (needs libmagic system package)
+pydantic==2.9.2
+pydantic-settings==2.5.2
+slowapi==0.1.9                   # rate limiting middleware
