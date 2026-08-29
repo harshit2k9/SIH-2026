@@ -1,63 +1,38 @@
-from pathlib import Path
 import os
+from pathlib import Path
 import re
 import secrets
 import time
 import uuid
 
 import bcrypt
-
-from fastapi import (
-    FastAPI,
-    Request,
-    Form,
-    UploadFile,
-    File,
-    Depends,
-)
-
-from fastapi.responses import (
-    HTMLResponse,
-    JSONResponse,
-    RedirectResponse,
-)
-
-from fastapi.templating import Jinja2Templates
+from database import SessionLocal, engine
+from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-
-from starlette.middleware.sessions import SessionMiddleware
-
-from sqlalchemy.orm import Session
-
-from database import engine, SessionLocal
+from fastapi.templating import Jinja2Templates
 from models import Base, User
-
-from services.liveness import analyze_blink
 from services.face_match import compare_faces
-
+from services.liveness import analyze_blink
 from services.mfa import (
-    generate_mfa_secret,
     create_provisioning_uri,
     create_qr_code_base64,
+    generate_mfa_secret,
     verify_totp,
 )
-
+from sqlalchemy.orm import Session
+from starlette.middleware.sessions import SessionMiddleware
 
 # ============================================================
 # PATHS
 # ============================================================
-
 BASE_DIR = Path(__file__).resolve().parent
-
 TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
-
 UPLOADS_DIR = BASE_DIR / "uploads"
-
 AADHAAR_DIR = UPLOADS_DIR / "aadhaar"
 PAN_DIR = UPLOADS_DIR / "pan"
 LIVE_PHOTO_DIR = UPLOADS_DIR / "live_photos"
-
 
 for folder in [
     TEMPLATES_DIR,
@@ -69,31 +44,21 @@ for folder in [
 ]:
     folder.mkdir(exist_ok=True)
 
-
 # ============================================================
 # FASTAPI
 # ============================================================
-
 app = FastAPI(
     title="SIH26 Secure Document Management System",
     version="1.0.0",
 )
 
-
 # ============================================================
 # SESSION COOKIE
-#
-# For localhost development.
-# In production this secret must come from an environment
-# variable / secret manager.
 # ============================================================
-
 SESSION_SECRET = os.getenv(
     "SIH26_SESSION_SECRET",
-    "DEV-ONLY-CHANGE-THIS-BEFORE-PRODUCTION-"
-    + secrets.token_hex(32),
+    "DEV-ONLY-CHANGE-THIS-BEFORE-PRODUCTION-" + secrets.token_hex(32),
 )
-
 
 app.add_middleware(
     SessionMiddleware,
@@ -101,26 +66,19 @@ app.add_middleware(
     session_cookie="sih26_session",
     max_age=3600,
     same_site="lax",
-    https_only=False,      # True when deployed over HTTPS
+    https_only=False,  # Set to True when deployed over HTTPS
 )
-
 
 # ============================================================
 # DATABASE
 # ============================================================
-
-Base.metadata.create_all(
-    bind=engine
-)
+Base.metadata.create_all(bind=engine)
 
 
 def get_db():
-
     db = SessionLocal()
-
     try:
         yield db
-
     finally:
         db.close()
 
@@ -128,336 +86,164 @@ def get_db():
 # ============================================================
 # TEMPLATES / STATIC
 # ============================================================
-
-templates = Jinja2Templates(
-    directory=str(TEMPLATES_DIR)
-)
-
-
-app.mount(
-    "/static",
-    StaticFiles(
-        directory=str(STATIC_DIR)
-    ),
-    name="static",
-)
-
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # ============================================================
 # LIVENESS SESSION STORAGE
 # ============================================================
-
 LIVENESS_SESSIONS = {}
-
 LIVENESS_SESSION_LIFETIME = 300
 
 
 def clean_expired_liveness_sessions():
-
     now = time.time()
-
     expired = [
         token
         for token, data in LIVENESS_SESSIONS.items()
         if data["expires_at"] < now
     ]
-
     for token in expired:
-        LIVENESS_SESSIONS.pop(
-            token,
-            None
-        )
+        LIVENESS_SESSIONS.pop(token, None)
 
 
-def create_liveness_session(
-    live_photo_bytes: bytes
-):
-
+def create_liveness_session(live_photo_bytes: bytes):
     clean_expired_liveness_sessions()
-
-    token = secrets.token_urlsafe(
-        32
-    )
-
+    token = secrets.token_urlsafe(32)
     LIVENESS_SESSIONS[token] = {
-        "expires_at":
-            time.time()
-            + LIVENESS_SESSION_LIFETIME,
-
-        "live_photo_bytes":
-            live_photo_bytes,
+        "expires_at": time.time() + LIVENESS_SESSION_LIFETIME,
+        "live_photo_bytes": live_photo_bytes,
     }
-
     return token
 
 
-def get_liveness_session(
-    token: str
-):
-
+def get_liveness_session(token: str):
     clean_expired_liveness_sessions()
-
     if not token:
         return None
-
-    return LIVENESS_SESSIONS.get(
-        token
-    )
+    return LIVENESS_SESSIONS.get(token)
 
 
-def consume_liveness_session(
-    token: str
-):
-
-    LIVENESS_SESSIONS.pop(
-        token,
-        None
-    )
+def consume_liveness_session(token: str):
+    LIVENESS_SESSIONS.pop(token, None)
 
 
 # ============================================================
 # LOGIN CHALLENGES
-#
-# Password verification creates a short-lived server-side
-# challenge. MFA must complete before a real session exists.
 # ============================================================
-
 LOGIN_CHALLENGES = {}
-
 LOGIN_CHALLENGE_LIFETIME = 300
 
 
 def clean_expired_login_challenges():
-
     now = time.time()
-
     expired = [
         token
         for token, data in LOGIN_CHALLENGES.items()
         if data["expires_at"] < now
     ]
-
     for token in expired:
-        LOGIN_CHALLENGES.pop(
-            token,
-            None
-        )
+        LOGIN_CHALLENGES.pop(token, None)
 
 
-def create_login_challenge(
-    user_uid: str
-):
-
+def create_login_challenge(user_uid: str):
     clean_expired_login_challenges()
-
-    token = secrets.token_urlsafe(
-        32
-    )
-
+    token = secrets.token_urlsafe(32)
     LOGIN_CHALLENGES[token] = {
         "user_uid": user_uid,
-
-        "expires_at":
-            time.time()
-            + LOGIN_CHALLENGE_LIFETIME,
+        "expires_at": time.time() + LOGIN_CHALLENGE_LIFETIME,
     }
-
     return token
 
 
-def get_login_challenge(
-    token: str
-):
-
+def get_login_challenge(token: str):
     clean_expired_login_challenges()
-
     if not token:
         return None
-
-    return LOGIN_CHALLENGES.get(
-        token
-    )
+    return LOGIN_CHALLENGES.get(token)
 
 
-def consume_login_challenge(
-    token: str
-):
-
-    LOGIN_CHALLENGES.pop(
-        token,
-        None
-    )
+def consume_login_challenge(token: str):
+    LOGIN_CHALLENGES.pop(token, None)
 
 
 # ============================================================
 # USER HELPERS
 # ============================================================
-
-def get_user_by_uid(
-    db: Session,
-    user_uid: str
-):
-
-    return (
-        db.query(User)
-        .filter(
-            User.user_uid == user_uid
-        )
-        .first()
-    )
+def get_user_by_uid(db: Session, user_uid: str):
+    return db.query(User).filter(User.user_uid == user_uid).first()
 
 
-def get_user_by_email(
-    db: Session,
-    email: str
-):
-
-    return (
-        db.query(User)
-        .filter(
-            User.email == email
-        )
-        .first()
-    )
+def get_user_by_email(db: Session, email: str):
+    return db.query(User).filter(User.email == email).first()
 
 
 # ============================================================
 # LOGIN PROTECTION
 # ============================================================
+def get_logged_in_user(request: Request, db: Session):
+    authenticated = request.session.get("authenticated")
+    user_uid = request.session.get("user_uid")
 
-def get_logged_in_user(
-    request: Request,
-    db: Session
-):
-
-    authenticated = request.session.get(
-        "authenticated"
-    )
-
-    user_uid = request.session.get(
-        "user_uid"
-    )
-
-    if not authenticated:
+    if not authenticated or not user_uid:
         return None
 
-    if not user_uid:
-        return None
+    user = get_user_by_uid(db, user_uid)
 
-    user = get_user_by_uid(
-        db,
-        user_uid
-    )
-
-    if not user:
-        return None
-
-    if user.registration_status != "ACTIVE":
-        return None
-
-    if not user.mfa_enabled:
+    if not user or user.registration_status != "ACTIVE" or not user.mfa_enabled:
         return None
 
     return user
 
 
 # ============================================================
-# HOME
+# SYSTEM ROUTES
 # ============================================================
-
 @app.get("/")
 def home():
-
     return {
         "status": "online",
         "message": "SIH26 backend is running",
     }
 
 
-# ============================================================
-# HEALTH
-# ============================================================
-
 @app.get("/health")
 def health():
-
-    return {
-        "status": "healthy"
-    }
+    return {"status": "healthy"}
 
 
 # ============================================================
-# REGISTER PAGE
+# REGISTRATION HELPERS & ROUTES
 # ============================================================
-
-@app.get(
-    "/register",
-    response_class=HTMLResponse,
-)
-def registration_page(
-    request: Request
-):
-
+@app.get("/register", response_class=HTMLResponse)
+def registration_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="register.html",
-        context={
-            "error": None
-        },
+        context={"error": None},
     )
 
 
-# ============================================================
-# REGISTRATION ERROR
-# ============================================================
-
-def registration_error(
-    request: Request,
-    message: str
-):
-
+def registration_error(request: Request, message: str):
     return templates.TemplateResponse(
         request=request,
         name="register.html",
-        context={
-            "error": message
-        },
+        context={"error": message},
         status_code=400,
     )
 
 
-# ============================================================
-# DELETE FILE
-# ============================================================
-
-def delete_file(
-    filepath
-):
-
+def delete_file(filepath):
     if not filepath:
         return
-
     try:
-
-        if os.path.exists(
-            filepath
-        ):
-            os.remove(
-                filepath
-            )
-
+        if os.path.exists(filepath):
+            os.remove(filepath)
     except Exception:
         pass
 
 
-# ============================================================
-# READ IMAGE
-# ============================================================
-
-async def read_image_upload(
-    uploaded_file: UploadFile
-):
-
+async def read_image_upload(uploaded_file: UploadFile):
     allowed = {
         "image/jpeg": ".jpg",
         "image/jpg": ".jpg",
@@ -465,1262 +251,499 @@ async def read_image_upload(
         "image/webp": ".webp",
     }
 
-    if (
-        uploaded_file.content_type
-        not in allowed
-    ):
-        raise ValueError(
-            "Only JPG, PNG and WEBP images are allowed."
-        )
+    if uploaded_file.content_type not in allowed:
+        raise ValueError("Only JPG, PNG and WEBP images are allowed.")
 
     contents = await uploaded_file.read()
 
     if not contents:
-        raise ValueError(
-            "Uploaded image is empty."
-        )
+        raise ValueError("Uploaded image is empty.")
 
-    if len(contents) > (
-        5 * 1024 * 1024
-    ):
-        raise ValueError(
-            "Uploaded image must be smaller than 5 MB."
-        )
+    if len(contents) > (5 * 1024 * 1024):
+        raise ValueError("Uploaded image must be smaller than 5 MB.")
 
-    return (
-        contents,
-        allowed[
-            uploaded_file.content_type
-        ]
-    )
+    return contents, allowed[uploaded_file.content_type]
 
-
-# ============================================================
-# SAVE IMAGE
-# ============================================================
 
 def save_image_bytes(
-    contents: bytes,
-    folder: Path,
-    user_uid: str,
-    extension: str,
+    contents: bytes, folder: Path, user_uid: str, extension: str
 ):
+    filename = f"{user_uid}_{uuid.uuid4().hex}{extension}"
+    filepath = folder / filename
 
-    filename = (
-        f"{user_uid}_"
-        f"{uuid.uuid4().hex}"
-        f"{extension}"
-    )
+    with open(filepath, "wb") as file:
+        file.write(contents)
 
-    filepath = (
-        folder / filename
-    )
-
-    with open(
-        filepath,
-        "wb"
-    ) as file:
-        file.write(
-            contents
-        )
-
-    return str(
-        filepath
-    )
+    return str(filepath)
 
 
-# ============================================================
-# LIVENESS
-# ============================================================
-
-@app.post(
-    "/api/liveness/check"
-)
-async def check_liveness(
-    frames: list[UploadFile] = File(...)
-):
-
-    if (
-        len(frames) < 12
-        or len(frames) > 50
-    ):
+@app.post("/api/liveness/check")
+async def check_liveness(frames: list[UploadFile] = File(...)):
+    if len(frames) < 12 or len(frames) > 50:
         return JSONResponse(
             content={
                 "passed": False,
-                "message":
-                    "Invalid number of camera frames.",
+                "message": "Invalid number of camera frames.",
             },
             status_code=400,
         )
 
     usable_frames = []
-
     for frame in frames:
-
-        if frame.content_type not in [
-            "image/jpeg",
-            "image/jpg",
-        ]:
+        if frame.content_type not in ["image/jpeg", "image/jpg"]:
             continue
 
         contents = await frame.read()
-
-        if not contents:
+        if not contents or len(contents) > (1024 * 1024):
             continue
 
-        if len(contents) > (
-            1024 * 1024
-        ):
-            continue
-
-        usable_frames.append(
-            contents
-        )
+        usable_frames.append(contents)
 
     if len(usable_frames) < 12:
-
         return JSONResponse(
             content={
                 "passed": False,
-                "message":
-                    "Not enough usable camera frames.",
+                "message": "Not enough usable camera frames.",
             },
             status_code=400,
         )
 
     try:
-
-        result = analyze_blink(
-            usable_frames
-        )
-
+        result = analyze_blink(usable_frames)
     except Exception as error:
-
-        print(
-            "LIVENESS ERROR:",
-            repr(error)
-        )
-
+        print("LIVENESS ERROR:", repr(error))
         return JSONResponse(
             content={
                 "passed": False,
-                "message":
-                    "Liveness processing failed.",
+                "message": "Liveness processing failed.",
             },
             status_code=500,
         )
 
-    if result.get(
-        "passed"
-    ):
+    if result.get("passed"):
+        live_photo = usable_frames[-1]
+        token = create_liveness_session(live_photo)
+        result["liveness_token"] = token
+        result["expires_in"] = LIVENESS_SESSION_LIFETIME
 
-        live_photo = (
-            usable_frames[-1]
-        )
-
-        token = create_liveness_session(
-            live_photo
-        )
-
-        result[
-            "liveness_token"
-        ] = token
-
-        result[
-            "expires_in"
-        ] = (
-            LIVENESS_SESSION_LIFETIME
-        )
-
-    return JSONResponse(
-        content=result
-    )
+    return JSONResponse(content=result)
 
 
-# ============================================================
-# REGISTER
-# ============================================================
-
-@app.post(
-    "/register",
-    response_class=HTMLResponse,
-)
+@app.post("/register", response_class=HTMLResponse)
 async def register_user(
-
     request: Request,
-
     full_name: str = Form(...),
     email: str = Form(...),
     phone: str = Form(...),
     password: str = Form(...),
-
     aadhaar_number: str = Form(...),
     pan_number: str = Form(...),
-
     liveness_token: str = Form(...),
-
     aadhaar_image: UploadFile = File(...),
     pan_image: UploadFile = File(...),
-
     db: Session = Depends(get_db),
-
 ):
-
     full_name = full_name.strip()
     email = email.strip().lower()
     phone = phone.strip()
-
-    aadhaar_number = (
-        aadhaar_number.strip()
-    )
-
-    pan_number = (
-        pan_number
-        .strip()
-        .upper()
-    )
-
+    aadhaar_number = aadhaar_number.strip()
+    pan_number = pan_number.strip().upper()
 
     if len(full_name) < 3:
+        return registration_error(request, "Please enter your full name.")
 
+    email_pattern = r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"
+    if not re.match(email_pattern, email):
+        return registration_error(request, "Invalid email address.")
+
+    if not phone.isdigit() or len(phone) != 10:
         return registration_error(
-            request,
-            "Please enter your full name."
+            request, "Phone number must contain exactly 10 digits."
         )
-
-
-    email_pattern = (
-        r"^[A-Za-z0-9._%+-]+@"
-        r"[A-Za-z0-9.-]+\."
-        r"[A-Za-z]{2,}$"
-    )
-
-
-    if not re.match(
-        email_pattern,
-        email
-    ):
-
-        return registration_error(
-            request,
-            "Invalid email address."
-        )
-
-
-    if (
-        not phone.isdigit()
-        or len(phone) != 10
-    ):
-
-        return registration_error(
-            request,
-            "Phone number must contain exactly 10 digits."
-        )
-
 
     if len(password) < 8:
-
         return registration_error(
-            request,
-            "Password must contain at least 8 characters."
+            request, "Password must contain at least 8 characters."
         )
 
-
-    password_bytes = (
-        password.encode(
-            "utf-8"
-        )
-    )
-
-
+    password_bytes = password.encode("utf-8")
     if len(password_bytes) > 72:
+        return registration_error(request, "Password is too long.")
 
+    if not aadhaar_number.isdigit() or len(aadhaar_number) != 12:
         return registration_error(
-            request,
-            "Password is too long."
+            request, "Aadhaar number must contain exactly 12 digits."
         )
 
+    pan_pattern = r"^[A-Z]{5}[0-9]{4}[A-Z]$"
+    if not re.match(pan_pattern, pan_number):
+        return registration_error(request, "Invalid PAN format.")
 
-    if (
-        not aadhaar_number.isdigit()
-        or len(aadhaar_number) != 12
-    ):
-
+    if db.query(User).filter(User.email == email).first():
         return registration_error(
-            request,
-            "Aadhaar number must contain exactly 12 digits."
+            request, "This email is already registered."
         )
 
-
-    pan_pattern = (
-        r"^[A-Z]{5}"
-        r"[0-9]{4}"
-        r"[A-Z]$"
-    )
-
-
-    if not re.match(
-        pan_pattern,
-        pan_number
-    ):
-
+    if db.query(User).filter(User.phone == phone).first():
         return registration_error(
-            request,
-            "Invalid PAN format."
+            request, "This phone number is already registered."
         )
 
-
-    if (
-        db.query(User)
-        .filter(
-            User.email == email
-        )
-        .first()
-    ):
-
-        return registration_error(
-            request,
-            "This email is already registered."
-        )
-
-
-    if (
-        db.query(User)
-        .filter(
-            User.phone == phone
-        )
-        .first()
-    ):
-
-        return registration_error(
-            request,
-            "This phone number is already registered."
-        )
-
-
-    session = get_liveness_session(
-        liveness_token
-    )
-
-
+    session = get_liveness_session(liveness_token)
     if not session:
-
         return registration_error(
-            request,
-            "Liveness verification expired. Please try again."
+            request, "Liveness verification expired. Please try again."
         )
 
-
-    live_photo_bytes = session[
-        "live_photo_bytes"
-    ]
-
+    live_photo_bytes = session["live_photo_bytes"]
 
     try:
-
-        (
-            aadhaar_bytes,
-            aadhaar_extension
-        ) = await read_image_upload(
+        aadhaar_bytes, aadhaar_extension = await read_image_upload(
             aadhaar_image
         )
-
-        (
-            pan_bytes,
-            pan_extension
-        ) = await read_image_upload(
-            pan_image
-        )
-
+        pan_bytes, pan_extension = await read_image_upload(pan_image)
     except ValueError as error:
-
-        return registration_error(
-            request,
-            str(error)
-        )
-
+        return registration_error(request, str(error))
 
     face_verified = False
-
-
     try:
-
-        face_result = compare_faces(
-            aadhaar_bytes,
-            live_photo_bytes
-        )
-
-        face_verified = face_result[
-            "matched"
-        ]
-
-        print(
-            "FACE RESULT:",
-            face_result
-        )
-
+        face_result = compare_faces(aadhaar_bytes, live_photo_bytes)
+        face_verified = face_result["matched"]
+        print("FACE RESULT:", face_result)
     except Exception as error:
-
-        print(
-            "FACE MATCH ERROR:",
-            repr(error)
-        )
-
+        print("FACE MATCH ERROR:", repr(error))
         face_verified = False
 
-
-    if face_verified:
-
-        registration_status = (
-            "MFA_PENDING"
-        )
-
-    else:
-
-        registration_status = (
-            "FLAGGED"
-        )
-
-
-    user_uid = (
-        "SIH-"
-        + uuid.uuid4()
-        .hex[:12]
-        .upper()
-    )
-
+    registration_status = "MFA_PENDING" if face_verified else "FLAGGED"
+    user_uid = "SIH-" + uuid.uuid4().hex[:12].upper()
 
     aadhaar_path = None
     pan_path = None
     live_photo_path = None
 
-
     try:
-
         aadhaar_path = save_image_bytes(
-            aadhaar_bytes,
-            AADHAAR_DIR,
-            user_uid,
-            aadhaar_extension
+            aadhaar_bytes, AADHAAR_DIR, user_uid, aadhaar_extension
         )
-
         pan_path = save_image_bytes(
-            pan_bytes,
-            PAN_DIR,
-            user_uid,
-            pan_extension
+            pan_bytes, PAN_DIR, user_uid, pan_extension
         )
-
         live_photo_path = save_image_bytes(
-            live_photo_bytes,
-            LIVE_PHOTO_DIR,
-            user_uid,
-            ".jpg"
+            live_photo_bytes, LIVE_PHOTO_DIR, user_uid, ".jpg"
         )
-
     except Exception as error:
-
-        print(
-            "FILE ERROR:",
-            repr(error)
-        )
-
-        delete_file(
-            aadhaar_path
-        )
-
-        delete_file(
-            pan_path
-        )
-
-        delete_file(
-            live_photo_path
-        )
-
-        return registration_error(
-            request,
-            "Could not save identity files."
-        )
-
+        print("FILE ERROR:", repr(error))
+        delete_file(aadhaar_path)
+        delete_file(pan_path)
+        delete_file(live_photo_path)
+        return registration_error(request, "Could not save identity files.")
 
     password_hash = bcrypt.hashpw(
-        password_bytes,
-        bcrypt.gensalt()
-    ).decode(
-        "utf-8"
-    )
-
+        password_bytes, bcrypt.gensalt()
+    ).decode("utf-8")
 
     user = User(
         user_uid=user_uid,
         full_name=full_name,
         email=email,
         phone=phone,
-
         password_hash=password_hash,
-
         aadhaar_number=aadhaar_number,
         pan_number=pan_number,
-
         aadhaar_image=aadhaar_path,
         pan_image=pan_path,
         live_photo=live_photo_path,
-
         face_verified=face_verified,
-
-        registration_status=
-            registration_status,
-
+        registration_status=registration_status,
         mfa_secret=None,
         mfa_enabled=False,
     )
 
-
     try:
-
-        db.add(
-            user
-        )
-
+        db.add(user)
         db.commit()
-
-        db.refresh(
-            user
-        )
-
+        db.refresh(user)
     except Exception as error:
-
         db.rollback()
+        print("DATABASE ERROR:", repr(error))
+        delete_file(aadhaar_path)
+        delete_file(pan_path)
+        delete_file(live_photo_path)
+        return registration_error(request, "Registration failed.")
 
-        print(
-            "DATABASE ERROR:",
-            repr(error)
-        )
-
-        delete_file(
-            aadhaar_path
-        )
-
-        delete_file(
-            pan_path
-        )
-
-        delete_file(
-            live_photo_path
-        )
-
-        return registration_error(
-            request,
-            "Registration failed."
-        )
-
-
-    consume_liveness_session(
-        liveness_token
-    )
-
+    consume_liveness_session(liveness_token)
 
     if face_verified:
-
         return RedirectResponse(
-            url=(
-                f"/mfa/setup/{user_uid}"
-            ),
-            status_code=303
+            url=f"/mfa/setup/{user_uid}", status_code=303
         )
-
 
     return HTMLResponse(
         content=f"""
         <!DOCTYPE html>
-
         <html>
-
         <head>
-            <title>
-                Manual Review Required
-            </title>
+            <title>Manual Review Required</title>
         </head>
-
         <body>
-
-            <h1>
-                Manual Review Required
-            </h1>
-
-            <p>
-                Face verification could not
-                be confirmed.
-            </p>
-
-            <p>
-                Registration ID:
-                <strong>{user_uid}</strong>
-            </p>
-
+            <h1>Manual Review Required</h1>
+            <p>Face verification could not be confirmed.</p>
+            <p>Registration ID: <strong>{user_uid}</strong></p>
         </body>
-
         </html>
         """
     )
 
 
 # ============================================================
-# MFA SETUP
+# MFA SETUP & VERIFICATION
 # ============================================================
-
-@app.get(
-    "/mfa/setup/{user_uid}",
-    response_class=HTMLResponse,
-)
-def mfa_setup(
-
-    user_uid: str,
-
-    request: Request,
-
-    db: Session = Depends(get_db),
-
-):
-
-    user = get_user_by_uid(
-        db,
-        user_uid
-    )
-
+@app.get("/mfa/setup/{user_uid}", response_class=HTMLResponse)
+def mfa_setup(user_uid: str, request: Request, db: Session = Depends(get_db)):
+    user = get_user_by_uid(db, user_uid)
 
     if not user:
-
-        return HTMLResponse(
-            "User not found.",
-            status_code=404
-        )
-
+        return HTMLResponse("User not found.", status_code=404)
 
     if user.registration_status == "FLAGGED":
-
         return HTMLResponse(
-            "This account requires administrator review.",
-            status_code=403
+            "This account requires administrator review.", status_code=403
         )
-
 
     if user.registration_status == "ACTIVE":
-
-        return RedirectResponse(
-            url="/login",
-            status_code=303
-        )
-
+        return RedirectResponse(url="/login", status_code=303)
 
     if not user.face_verified:
-
         return HTMLResponse(
-            "Identity verification has not been completed.",
-            status_code=403
+            "Identity verification has not been completed.", status_code=403
         )
-
 
     if not user.mfa_secret:
-
-        user.mfa_secret = (
-            generate_mfa_secret()
-        )
-
+        user.mfa_secret = generate_mfa_secret()
         db.commit()
+        db.refresh(user)
 
-        db.refresh(
-            user
-        )
-
-
-    provisioning_uri = (
-        create_provisioning_uri(
-            user.mfa_secret,
-            user.email
-        )
-    )
-
-
-    qr_code = (
-        create_qr_code_base64(
-            provisioning_uri
-        )
-    )
-
+    provisioning_uri = create_provisioning_uri(user.mfa_secret, user.email)
+    qr_code = create_qr_code_base64(provisioning_uri)
 
     return templates.TemplateResponse(
         request=request,
-
         name="mfa_setup.html",
-
         context={
-            "user_uid":
-                user.user_uid,
-
-            "qr_code":
-                qr_code,
-
-            "secret":
-                user.mfa_secret,
-
-            "error":
-                None,
+            "user_uid": user.user_uid,
+            "qr_code": qr_code,
+            "secret": user.mfa_secret,
+            "error": None,
         },
     )
 
 
-# ============================================================
-# MFA ACTIVATION VERIFY
-# ============================================================
-
-@app.post(
-    "/mfa/verify",
-    response_class=HTMLResponse,
-)
+@app.post("/mfa/verify", response_class=HTMLResponse)
 def verify_mfa(
-
     request: Request,
-
     user_uid: str = Form(...),
-
     code: str = Form(...),
-
     db: Session = Depends(get_db),
-
 ):
-
-    user = get_user_by_uid(
-        db,
-        user_uid
-    )
-
+    user = get_user_by_uid(db, user_uid)
 
     if not user:
+        return HTMLResponse("User not found.", status_code=404)
 
+    if not user.face_verified or user.registration_status == "FLAGGED":
         return HTMLResponse(
-            "User not found.",
-            status_code=404
+            "Account is not eligible for MFA activation.", status_code=403
         )
-
-
-    if (
-        not user.face_verified
-        or user.registration_status
-        == "FLAGGED"
-    ):
-
-        return HTMLResponse(
-            "Account is not eligible for MFA activation.",
-            status_code=403
-        )
-
 
     if not user.mfa_secret:
-
         return HTMLResponse(
-            "MFA setup has not been initialized.",
-            status_code=400
+            "MFA setup has not been initialized.", status_code=400
         )
 
-
-    if not verify_totp(
-        user.mfa_secret,
-        code
-    ):
-
-        provisioning_uri = (
-            create_provisioning_uri(
-                user.mfa_secret,
-                user.email
-            )
-        )
-
-        qr_code = (
-            create_qr_code_base64(
-                provisioning_uri
-            )
-        )
+    if not verify_totp(user.mfa_secret, code):
+        provisioning_uri = create_provisioning_uri(user.mfa_secret, user.email)
+        qr_code = create_qr_code_base64(provisioning_uri)
 
         return templates.TemplateResponse(
             request=request,
-
             name="mfa_setup.html",
-
             context={
-                "user_uid":
-                    user.user_uid,
-
-                "qr_code":
-                    qr_code,
-
-                "secret":
-                    user.mfa_secret,
-
-                "error":
-                    "Invalid authentication code. "
-                    "Wait for a new code and try again.",
+                "user_uid": user.user_uid,
+                "qr_code": qr_code,
+                "secret": user.mfa_secret,
+                "error": "Invalid authentication code. Wait for a new code and try again.",
             },
-
             status_code=400,
         )
 
-
     user.mfa_enabled = True
-
-    user.registration_status = (
-        "ACTIVE"
-    )
-
-
+    user.registration_status = "ACTIVE"
     db.commit()
+    db.refresh(user)
 
-    db.refresh(
-        user
-    )
-
-
-    return RedirectResponse(
-        url="/login",
-        status_code=303
-    )
+    return RedirectResponse(url="/login", status_code=303)
 
 
 # ============================================================
-# LOGIN PAGE
+# LOGIN ROUTES
 # ============================================================
-
-@app.get(
-    "/login",
-    response_class=HTMLResponse,
-)
-def login_page(
-    request: Request
-):
-
-    # Already authenticated
-
-    if request.session.get(
-        "authenticated"
-    ):
-
-        return RedirectResponse(
-            url="/dashboard",
-            status_code=303
-        )
-
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request):
+    if request.session.get("authenticated"):
+        return RedirectResponse(url="/dashboard", status_code=303)
 
     return templates.TemplateResponse(
         request=request,
-
         name="login.html",
-
-        context={
-            "error": None
-        },
+        context={"error": None},
     )
 
 
-# ============================================================
-# PASSWORD LOGIN
-# ============================================================
-
-@app.post(
-    "/login",
-    response_class=HTMLResponse,
-)
+@app.post("/login", response_class=HTMLResponse)
 def login_password(
-
     request: Request,
-
     email: str = Form(...),
-
     password: str = Form(...),
-
     db: Session = Depends(get_db),
-
 ):
-
-    email = (
-        email
-        .strip()
-        .lower()
-    )
-
-
-    user = get_user_by_email(
-        db,
-        email
-    )
-
-
-    # Intentionally generic error.
-    # Don't reveal whether the email exists.
+    email = email.strip().lower()
+    user = get_user_by_email(db, email)
 
     if not user:
-
         return templates.TemplateResponse(
             request=request,
-
             name="login.html",
-
-            context={
-                "error":
-                    "Invalid email or password."
-            },
-
+            context={"error": "Invalid email or password."},
             status_code=401,
         )
-
 
     try:
-
-        password_valid = (
-            bcrypt.checkpw(
-
-                password.encode(
-                    "utf-8"
-                ),
-
-                user.password_hash.encode(
-                    "utf-8"
-                )
-
-            )
+        password_valid = bcrypt.checkpw(
+            password.encode("utf-8"), user.password_hash.encode("utf-8")
         )
-
     except Exception:
-
         password_valid = False
 
-
     if not password_valid:
-
         return templates.TemplateResponse(
             request=request,
-
             name="login.html",
-
-            context={
-                "error":
-                    "Invalid email or password."
-            },
-
+            context={"error": "Invalid email or password."},
             status_code=401,
         )
-
-
-    # --------------------------------------------------------
-    # ACCOUNT STATUS
-    # --------------------------------------------------------
 
     if user.registration_status == "FLAGGED":
-
         return templates.TemplateResponse(
             request=request,
-
             name="login.html",
-
             context={
-                "error":
-                    "This account is awaiting administrator review."
+                "error": "This account is awaiting administrator review."
             },
-
             status_code=403,
         )
-
 
     if user.registration_status != "ACTIVE":
-
         return templates.TemplateResponse(
             request=request,
-
             name="login.html",
-
-            context={
-                "error":
-                    "This account has not been activated."
-            },
-
+            context={"error": "This account has not been activated."},
             status_code=403,
         )
-
 
     if not user.mfa_enabled:
-
         return templates.TemplateResponse(
             request=request,
-
             name="login.html",
-
             context={
-                "error":
-                    "Google Authenticator has not been configured."
+                "error": "Google Authenticator has not been configured."
             },
-
             status_code=403,
         )
-
 
     if not user.mfa_secret:
-
         return templates.TemplateResponse(
             request=request,
-
             name="login.html",
-
-            context={
-                "error":
-                    "MFA configuration is incomplete."
-            },
-
+            context={"error": "MFA configuration is incomplete."},
             status_code=403,
         )
 
-
-    # --------------------------------------------------------
-    # CREATE MFA LOGIN CHALLENGE
-    # --------------------------------------------------------
-
-    challenge = create_login_challenge(
-        user.user_uid
-    )
-
-
+    challenge = create_login_challenge(user.user_uid)
     return RedirectResponse(
-        url=(
-            f"/login/mfa/{challenge}"
-        ),
-        status_code=303
+        url=f"/login/mfa/{challenge}", status_code=303
     )
 
 
-# ============================================================
-# LOGIN MFA PAGE
-# ============================================================
-
-@app.get(
-    "/login/mfa/{challenge_token}",
-    response_class=HTMLResponse,
-)
-def login_mfa_page(
-
-    challenge_token: str,
-
-    request: Request,
-
-):
-
-    challenge = get_login_challenge(
-        challenge_token
-    )
-
-
+@app.get("/login/mfa/{challenge_token}", response_class=HTMLResponse)
+def login_mfa_page(challenge_token: str, request: Request):
+    challenge = get_login_challenge(challenge_token)
     if not challenge:
-
-        return RedirectResponse(
-            url="/login",
-            status_code=303
-        )
-
+        return RedirectResponse(url="/login", status_code=303)
 
     return templates.TemplateResponse(
         request=request,
-
         name="login_mfa.html",
-
-        context={
-            "challenge_token":
-                challenge_token,
-
-            "error":
-                None,
-        },
+        context={"challenge_token": challenge_token, "error": None},
     )
 
 
-# ============================================================
-# VERIFY LOGIN MFA
-# ============================================================
-
-@app.post(
-    "/login/mfa",
-    response_class=HTMLResponse,
-)
+@app.post("/login/mfa", response_class=HTMLResponse)
 def login_mfa_verify(
-
     request: Request,
-
     challenge_token: str = Form(...),
-
     code: str = Form(...),
-
     db: Session = Depends(get_db),
-
 ):
-
-    challenge = get_login_challenge(
-        challenge_token
-    )
-
-
+    challenge = get_login_challenge(challenge_token)
     if not challenge:
+        return RedirectResponse(url="/login", status_code=303)
 
-        return RedirectResponse(
-            url="/login",
-            status_code=303
-        )
+    user = get_user_by_uid(db, challenge["user_uid"])
+    if not user or user.registration_status != "ACTIVE":
+        consume_login_challenge(challenge_token)
+        return RedirectResponse(url="/login", status_code=303)
 
-
-    user = get_user_by_uid(
-        db,
-        challenge["user_uid"]
-    )
-
-
-    if not user:
-
-        consume_login_challenge(
-            challenge_token
-        )
-
-        return RedirectResponse(
-            url="/login",
-            status_code=303
-        )
-
-
-    if (
-        user.registration_status
-        != "ACTIVE"
-    ):
-
-        consume_login_challenge(
-            challenge_token
-        )
-
-        return RedirectResponse(
-            url="/login",
-            status_code=303
-        )
-
-
-    if not verify_totp(
-        user.mfa_secret,
-        code
-    ):
-
+    if not verify_totp(user.mfa_secret, code):
         return templates.TemplateResponse(
             request=request,
-
             name="login_mfa.html",
-
             context={
-                "challenge_token":
-                    challenge_token,
-
-                "error":
-                    "Invalid authentication code."
+                "challenge_token": challenge_token,
+                "error": "Invalid authentication code.",
             },
-
             status_code=401,
         )
 
+    consume_login_challenge(challenge_token)
 
-    # --------------------------------------------------------
-    # MFA PASSED
-    # --------------------------------------------------------
-
-    consume_login_challenge(
-        challenge_token
-    )
-
-
-    # Prevent session fixation / old data
-
+    # Prevent session fixation
     request.session.clear()
+    request.session["authenticated"] = True
+    request.session["user_uid"] = user.user_uid
+    request.session["login_time"] = int(time.time())
 
-
-    request.session[
-        "authenticated"
-    ] = True
-
-
-    request.session[
-        "user_uid"
-    ] = user.user_uid
-
-
-    request.session[
-        "login_time"
-    ] = int(
-        time.time()
-    )
-
-
-    return RedirectResponse(
-        url="/dashboard",
-        status_code=303
-    )
+    return RedirectResponse(url="/dashboard", status_code=303)
 
 
 # ============================================================
-# DASHBOARD
+# DASHBOARD & LOGOUT
 # ============================================================
-
-@app.get(
-    "/dashboard",
-    response_class=HTMLResponse,
-)
-def dashboard(
-
-    request: Request,
-
-    db: Session = Depends(get_db),
-
-):
-
-    user = get_logged_in_user(
-        request,
-        db
-    )
-
+@app.get("/dashboard", response_class=HTMLResponse)
+def dashboard(request: Request, db: Session = Depends(get_db)):
+    user = get_logged_in_user(request, db)
 
     if not user:
-
         request.session.clear()
-
-        return RedirectResponse(
-            url="/login",
-            status_code=303
-        )
-
+        return RedirectResponse(url="/login", status_code=303)
 
     return templates.TemplateResponse(
         request=request,
-
         name="dashboard.html",
-
-        context={
-            "user":
-                user
-        },
+        context={"user": user},
     )
 
-
-# ============================================================
-# LOGOUT
-# ============================================================
 
 @app.post("/logout")
-def logout(
-    request: Request
-):
-
+def logout(request: Request):
     request.session.clear()
-
-
-    return RedirectResponse(
-        url="/login",
-        status_code=303
-    )
+    return RedirectResponse(url="/login", status_code=303)
