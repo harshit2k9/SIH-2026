@@ -1,35 +1,82 @@
+version: "3.8"
+
 services:
-  database:
-    image: postgres:15-alpine
-    container_name: dms_postgres
+  # --- Database Service ---
+  postgres:
+    image: postgres:16
+    container_name: sddms_postgres
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: secretpassword
-      POSTGRES_DB: app_db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5432:5432"
     volumes:
-      - db_data:/var/lib/postgresql/data
-      - ./database:/docker-entrypoint-initdb.d
+      - ./sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
+  # --- Object Storage Service ---
+  minio:
+    image: minio/minio:latest
+    container_name: sddms_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web console
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --- Antivirus Scanner Service ---
+  clamav:
+    image: clamav/clamav:latest
+    container_name: sddms_clamav
+    ports:
+      - "3310:3310"
+    volumes:
+      - clamdata:/var/lib/clamav
+    healthcheck:
+      test: ["CMD", "sh", "-c", "echo PING | nc localhost 3310"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # --- Application Backend ---
   backend:
     build: ./backend
     container_name: dms_backend
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql://admin:secretpassword@database:5432/app_db
+      DATABASE_URL: ${DATABASE_URL}
     depends_on:
-      - database
+      postgres:
+        condition: service_healthy
 
+  # --- Application Frontend ---
   frontend:
     build: ./frontend
     container_name: dms_frontend
     ports:
       - "5173:5173"
     environment:
-      - VITE_API_URL=http://localhost:8000
+      - VITE_API_URL=${VITE_API_URL}
     depends_on:
       - backend
+
 volumes:
-  db_data:
+  pgdata:
+  miniodata:
+  clamdata:
