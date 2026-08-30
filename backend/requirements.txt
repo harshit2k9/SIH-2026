@@ -14,3 +14,4 @@ qrcode==8.2
 Pillow
 numpy
 mediapipe
+easyocr

@@ -199,15 +199,18 @@ def detect_single_face(
 
 
     # --------------------------------------------------------
-    # Multiple faces
+    # Multiple faces handling
     # --------------------------------------------------------
 
     if len(faces) > 1:
-
-        raise ValueError(
-            f"Multiple faces detected in {image_name}. "
-            "Only one face must be visible."
-        )
+        # If it's an ID document, pick the largest face (primary photo vs ghost image)
+        if "document" in image_name.lower() or "identity" in image_name.lower():
+            faces = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)
+        else:
+            raise ValueError(
+                f"Multiple faces detected in {image_name}. "
+                "Only one face must be visible."
+            )
 
 
     face = faces[0]

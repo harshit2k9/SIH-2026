@@ -7,6 +7,7 @@ import uuid
 
 import bcrypt
 from database import SessionLocal, engine
+import easyocr
 from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -66,6 +67,84 @@ app.add_middleware(
     same_site="lax",
     https_only=False,  # Set to True when deployed over HTTPS
 )
+
+# ============================================================
+# OCR & VERHOEFF VERIFICATION SETUP
+# ============================================================
+ocr_reader = easyocr.Reader(["en", "hi"], gpu=False)
+
+VERHOEFF_D = [
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+    [1, 2, 3, 4, 0, 6, 7, 8, 9, 5],
+    [2, 3, 4, 0, 1, 7, 8, 9, 5, 6],
+    [3, 4, 0, 1, 2, 8, 9, 5, 6, 7],
+    [4, 0, 1, 2, 3, 9, 5, 6, 7, 8],
+    [5, 9, 8, 7, 6, 0, 1, 2, 3, 4],
+    [6, 5, 9, 8, 7, 1, 0, 4, 3, 2],
+    [7, 6, 5, 9, 8, 2, 1, 0, 4, 3],
+    [8, 7, 6, 5, 9, 3, 2, 1, 0, 4],
+    [9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
+]
+
+VERHOEFF_P = [
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+    [1, 5, 7, 6, 2, 8, 3, 0, 9, 4],
+    [5, 8, 0, 3, 7, 9, 6, 1, 4, 2],
+    [8, 9, 1, 6, 0, 4, 3, 5, 2, 7],
+    [9, 4, 5, 3, 1, 2, 6, 8, 7, 0],
+    [4, 2, 8, 6, 5, 7, 3, 9, 0, 1],
+    [2, 7, 9, 3, 8, 0, 6, 4, 1, 5],
+    [7, 0, 4, 6, 9, 1, 3, 2, 5, 8]
+]
+
+
+def validate_verhoeff(number_str: str) -> bool:
+    if not number_str:
+        return False
+        
+    clean_num = str(number_str).strip().replace(" ", "").replace("-", "")
+    
+    if not clean_num.isdigit() or len(clean_num) != 12 or clean_num[0] in ('0', '1'):
+        return False
+
+    c = 0
+    for i, item in enumerate(reversed(clean_num)):
+        c = VERHOEFF_D[c][VERHOEFF_P[i % 8][int(item)]]
+        
+    return c == 0
+
+
+def is_valid_aadhaar_document(image_bytes: bytes) -> bool:
+    try:
+        results = ocr_reader.readtext(image_bytes, detail=0)
+        extracted_text = " ".join(results)
+        text_lower = extracted_text.lower()
+
+        keywords = [
+            "government of india",
+            "unique identification authority of india",
+            "bharat sarkar",
+            "dob",
+            "male",
+            "female",
+            "enrollment",
+        ]
+        keyword_matches = sum(1 for kw in keywords if kw in text_lower)
+
+        if keyword_matches < 1:
+            return False
+
+        digit_groups = re.findall(r"\b\d{4}\s?\d{4}\s?\d{4}\b", extracted_text)
+        for group in digit_groups:
+            clean_digits = re.sub(r"\D", "", group)
+            if len(clean_digits) == 12 and validate_verhoeff(clean_digits):
+                return True
+
+        return keyword_matches >= 2
+    except Exception as e:
+        print("DOCUMENT VALIDATION ERROR:", repr(e))
+        return False
+
 
 # ============================================================
 # DATABASE
@@ -365,9 +444,9 @@ async def register_user(
     if len(password_bytes) > 72:
         return registration_error(request, "Password is too long.")
 
-    if not aadhaar_number.isdigit() or len(aadhaar_number) != 12:
+    if not validate_verhoeff(aadhaar_number):
         return registration_error(
-            request, "Aadhaar number must contain exactly 12 digits."
+            request, "The entered Aadhaar number is mathematically invalid."
         )
 
     if db.query(User).filter(User.email == email).first():
@@ -394,6 +473,14 @@ async def register_user(
         )
     except ValueError as error:
         return registration_error(request, str(error))
+
+    # --- Document Verification Check (Keywords + Verhoeff) ---
+    if not is_valid_aadhaar_document(aadhaar_bytes):
+        return registration_error(
+            request,
+            "Uploaded document does not appear to be a valid Aadhaar card.",
+        )
+    # ---------------------------------------------------------
 
     face_verified = False
     try:
