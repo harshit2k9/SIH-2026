@@ -1,5 +1,6 @@
 node_modules/
 .env
+_pycache_
 *.log
 dist/
 build/
