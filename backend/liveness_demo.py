@@ -535,7 +535,7 @@ HTML_PAGE = """
 
             const response =
                 await fetch(
-                    "/check",
+                    "/api/liveliness/check",
                     {
                         method: "POST",
                         body: formData
