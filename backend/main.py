@@ -31,7 +31,6 @@ TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
 UPLOADS_DIR = BASE_DIR / "uploads"
 AADHAAR_DIR = UPLOADS_DIR / "aadhaar"
-PAN_DIR = UPLOADS_DIR / "pan"
 LIVE_PHOTO_DIR = UPLOADS_DIR / "live_photos"
 
 for folder in [
@@ -39,7 +38,6 @@ for folder in [
     STATIC_DIR,
     UPLOADS_DIR,
     AADHAAR_DIR,
-    PAN_DIR,
     LIVE_PHOTO_DIR,
 ]:
     folder.mkdir(exist_ok=True)
@@ -337,17 +335,14 @@ async def register_user(
     phone: str = Form(...),
     password: str = Form(...),
     aadhaar_number: str = Form(...),
-    pan_number: str = Form(...),
     liveness_token: str = Form(...),
     aadhaar_image: UploadFile = File(...),
-    pan_image: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
     full_name = full_name.strip()
     email = email.strip().lower()
     phone = phone.strip()
     aadhaar_number = aadhaar_number.strip()
-    pan_number = pan_number.strip().upper()
 
     if len(full_name) < 3:
         return registration_error(request, "Please enter your full name.")
@@ -375,10 +370,6 @@ async def register_user(
             request, "Aadhaar number must contain exactly 12 digits."
         )
 
-    pan_pattern = r"^[A-Z]{5}[0-9]{4}[A-Z]$"
-    if not re.match(pan_pattern, pan_number):
-        return registration_error(request, "Invalid PAN format.")
-
     if db.query(User).filter(User.email == email).first():
         return registration_error(
             request, "This email is already registered."
@@ -401,7 +392,6 @@ async def register_user(
         aadhaar_bytes, aadhaar_extension = await read_image_upload(
             aadhaar_image
         )
-        pan_bytes, pan_extension = await read_image_upload(pan_image)
     except ValueError as error:
         return registration_error(request, str(error))
 
@@ -418,15 +408,11 @@ async def register_user(
     user_uid = "SIH-" + uuid.uuid4().hex[:12].upper()
 
     aadhaar_path = None
-    pan_path = None
     live_photo_path = None
 
     try:
         aadhaar_path = save_image_bytes(
             aadhaar_bytes, AADHAAR_DIR, user_uid, aadhaar_extension
-        )
-        pan_path = save_image_bytes(
-            pan_bytes, PAN_DIR, user_uid, pan_extension
         )
         live_photo_path = save_image_bytes(
             live_photo_bytes, LIVE_PHOTO_DIR, user_uid, ".jpg"
@@ -434,7 +420,6 @@ async def register_user(
     except Exception as error:
         print("FILE ERROR:", repr(error))
         delete_file(aadhaar_path)
-        delete_file(pan_path)
         delete_file(live_photo_path)
         return registration_error(request, "Could not save identity files.")
 
@@ -449,9 +434,7 @@ async def register_user(
         phone=phone,
         password_hash=password_hash,
         aadhaar_number=aadhaar_number,
-        pan_number=pan_number,
         aadhaar_image=aadhaar_path,
-        pan_image=pan_path,
         live_photo=live_photo_path,
         face_verified=face_verified,
         registration_status=registration_status,
@@ -467,7 +450,6 @@ async def register_user(
         db.rollback()
         print("DATABASE ERROR:", repr(error))
         delete_file(aadhaar_path)
-        delete_file(pan_path)
         delete_file(live_photo_path)
         return registration_error(request, "Registration failed.")
 

@@ -57,11 +57,6 @@ class User(Base):
         nullable=False
     )
 
-    pan_number = Column(
-        String,
-        nullable=False
-    )
-
     aadhaar_image = Column(
         String,
         nullable=False
@@ -72,11 +67,6 @@ class User(Base):
     #
     # New registrations DO NOT upload PAN images.
     # --------------------------------------------------------
-
-    pan_image = Column(
-        String,
-        nullable=True
-    )
 
     live_photo = Column(
         String,
