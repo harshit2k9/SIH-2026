@@ -15,3 +15,11 @@ Pillow
 numpy
 mediapipe
 easyocr
+asyncpg
+aiofiles
+aioboto3
+pyjwt[crypto]
+python-magic
+pydantic
+pydantic-settings
+slowapi

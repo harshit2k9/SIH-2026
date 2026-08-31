@@ -5,3 +5,31 @@ _pycache_
 dist/
 build/
 .DS_Store
+# Secrets - NEVER commit these
+.env
+keys/
+*.pem
+
+# Python virtual environment
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Uploaded/quarantined files (local testing artifacts)
+/tmp/sddms_quarantine/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
