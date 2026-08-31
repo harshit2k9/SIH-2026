@@ -5,8 +5,8 @@ so user-controlled values can NEVER be interpolated into SQL text.
 """
 from fastapi import HTTPException, status
 
-from app.database import get_pool
-from app.security.auth import AuthenticatedUser
+from database import get_pool
+from security.auth import AuthenticatedUser
 
 
 async def require_upload_permission(user: AuthenticatedUser, case_id: int) -> None:

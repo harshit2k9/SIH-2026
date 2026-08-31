@@ -10,7 +10,7 @@ tells us OK / FOUND <signature>.
 import asyncio
 import struct
 
-from app.config import settings
+from config import settings
 
 
 class ScanResult:
