@@ -12,6 +12,16 @@ from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+import logging
+
+from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+
+from database import close_db_pool, init_db_pool
+from routers.documents import limiter, router as documents_router
+from services.storage import ensure_bucket
+
 from models import Base, User
 from services.face_match import compare_faces
 from services.liveness import analyze_blink
@@ -24,6 +34,7 @@ from services.mfa import (
 from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 
+
 # ============================================================
 # PATHS
 # ============================================================
@@ -33,7 +44,7 @@ STATIC_DIR = BASE_DIR / "static"
 UPLOADS_DIR = BASE_DIR / "uploads"
 AADHAAR_DIR = UPLOADS_DIR / "aadhaar"
 LIVE_PHOTO_DIR = UPLOADS_DIR / "live_photos"
-
+logging.basicConfig(level=logging.INFO)
 for folder in [
     TEMPLATES_DIR,
     STATIC_DIR,
@@ -54,10 +65,14 @@ app = FastAPI(
 # ============================================================
 # SESSION COOKIE
 # ============================================================
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 SESSION_SECRET = os.getenv(
     "SIH26_SESSION_SECRET",
     "DEV-ONLY-CHANGE-THIS-BEFORE-PRODUCTION-" + secrets.token_hex(32),
 )
+
 
 app.add_middleware(
     SessionMiddleware,
@@ -66,12 +81,32 @@ app.add_middleware(
     max_age=3600,
     same_site="lax",
     https_only=False,  # Set to True when deployed over HTTPS
+    CORSMiddleware,
+    allow_origins=["https://your-frontend-domain.example"],
+    allow_credentials=True,
+    allow_methods=["POST", "GET"],
+    allow_headers=["Authorization", "Content-Type"],
 )
+
+@app.on_event("startup")
+async def on_startup():
+    await init_db_pool()
+    await ensure_bucket()
+
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    await close_db_pool()
+
+
+app.include_router(documents_router)
+
 
 # ============================================================
 # OCR & VERHOEFF VERIFICATION SETUP
 # ============================================================
 ocr_reader = easyocr.Reader(["en", "hi"], gpu=False)
+
 
 VERHOEFF_D = [
     [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
