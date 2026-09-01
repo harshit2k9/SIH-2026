@@ -28,15 +28,15 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from app.config import settings
-from app.database import get_pool
-from app.schemas import DocumentUploadResponse
-from app.security.auth import AuthenticatedUser, verify_jwt
-from app.security.rbac import require_upload_permission
-from app.security.sanitize import assert_allowed_mime, detect_true_mime, extension_for_mime, sanitize_display_filename
-from app.services import storage
-from app.services.antivirus import scan_file
-from app.services.audit import write_audit_entry
+from config import settings
+from database import get_pool
+from schemas import DocumentUploadResponse
+from security.auth import AuthenticatedUser, verify_jwt
+from security.rbac import require_upload_permission
+from security.sanitize import assert_allowed_mime, detect_true_mime, extension_for_mime, sanitize_display_filename
+from services import storage
+from services.antivirus import scan_file
+from services.audit import write_audit_entry
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 security_logger = logging.getLogger("security_events")

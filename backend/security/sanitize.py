@@ -10,7 +10,7 @@ import re
 
 import magic
 
-from app.config import settings
+from config import settings
 
 _SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._\- ]")
 

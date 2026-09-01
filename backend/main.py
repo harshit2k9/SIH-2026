@@ -74,6 +74,7 @@ SESSION_SECRET = os.getenv(
 )
 
 
+# 1. Session Middleware configuration
 app.add_middleware(
     SessionMiddleware,
     secret_key=SESSION_SECRET,
@@ -81,6 +82,10 @@ app.add_middleware(
     max_age=3600,
     same_site="lax",
     https_only=False,  # Set to True when deployed over HTTPS
+)
+
+# 2. CORS Middleware configuration
+app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://your-frontend-domain.example"],
     allow_credentials=True,

@@ -21,8 +21,8 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.config import settings
-from app.database import get_pool
+from config import settings
+from database import get_pool
 
 bearer_scheme = HTTPBearer(auto_error=True)
 
