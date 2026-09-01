@@ -22,8 +22,8 @@ _session = aioboto3.Session()
 def _client_kwargs():
     return dict(
         endpoint_url=settings.MINIO_ENDPOINT_URL,
-        aws_access_key_id=settings.MINIO_ACCESS_KEY,
-        aws_secret_access_key=settings.MINIO_SECRET_KEY,
+        aws_access_key_id=settings.MINIO_ROOT_USER,
+        aws_secret_access_key=settings.MINIO_ROOT_PASSWORD,
         use_ssl=settings.MINIO_USE_SSL,
         config=_boto_config,
     )

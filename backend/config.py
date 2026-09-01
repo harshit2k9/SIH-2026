@@ -1,16 +1,22 @@
-# config.py
-"""
-Centralized settings. Never hardcode secrets — all pulled from environment
-variables / .env file. Fail loudly at startup if critical secrets are missing.
-"""
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import computed_field
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # --- PostgreSQL ---
-    DATABASE_URL: str = "postgresql://admin:secretpassword@postgres:5432/app_db"
+    # --- PostgreSQL Components ---
+    POSTGRES_USER: str
+    POSTGRES_PASSWORD: str
+    POSTGRES_DB: str
+    POSTGRES_SERVER: str = "postgres"
+    POSTGRES_PORT: int = 5432
+
+    @computed_field
+    @property
+    def DATABASE_URL(self) -> str:
+        return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+
     SQLALCHEMY_DATABASE_URL: str = "sqlite:///./sih26.db"
 
     # Connection pool tuning
@@ -30,6 +36,7 @@ class Settings(BaseSettings):
     MINIO_ENDPOINT_URL: str = "http://minio:9000"
     MINIO_ROOT_USER: str
     MINIO_ROOT_PASSWORD: str
+    
     MINIO_BUCKET: str = "legal-documents"
     MINIO_USE_SSL: bool = False
     MINIO_ENABLE_SSE: bool = False
