@@ -49,3 +49,19 @@ async def write_audit_entry(
         document_id, actor_id, action, json.dumps(details), prev_hash, entry_hash,
     )
     return entry_hash
+
+async def log_audit_event(
+    conn: asyncpg.Connection, 
+    document_id: int, 
+    user_id: int, 
+    action: str, 
+    ip_address: str
+) -> None:
+    """Appends an immutable entry to the chain of custody audit log."""
+    await conn.execute(
+        """
+        INSERT INTO audit_logs (document_id, user_id, action, ip_address, created_at)
+        VALUES ($1, $2, $3, $4, NOW())
+        """,
+        document_id, user_id, action, ip_address
+    )

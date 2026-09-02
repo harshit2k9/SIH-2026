@@ -56,11 +56,23 @@ async def delete_object(storage_key: str) -> None:
     async with _session.client("s3", **_client_kwargs()) as s3:
         await s3.delete_object(Bucket=settings.MINIO_BUCKET, Key=storage_key)
 
+async def generate_presigned_download_url(
+    storage_key: str, 
+    file_name: str | None = None, 
+    expires_in: int = 300
+) -> str:
+    """Generates a short-lived presigned URL with optional inline browser disposition."""
+    params = {
+        "Bucket": settings.MINIO_BUCKET,
+        "Key": storage_key,
+    }
+    
+    if file_name:
+        params["ResponseContentDisposition"] = f'inline; filename="{file_name}"'
 
-async def generate_presigned_download_url(storage_key: str, expires_in: int = 300) -> str:
     async with _session.client("s3", **_client_kwargs()) as s3:
         return await s3.generate_presigned_url(
             "get_object",
-            Params={"Bucket": settings.MINIO_BUCKET, "Key": storage_key},
-            ExpiresIn=expires_in,   # short TTL — avoid stale link replay
+            Params=params,
+            ExpiresIn=expires_in,  # short TTL — avoid stale link replay
         )

@@ -24,19 +24,22 @@ from hashlib import sha256
 from pathlib import Path
 
 import aiofiles
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status, Query
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from config import settings
 from database import get_pool
-from schemas import DocumentUploadResponse
+from schemas import DocumentUploadResponse,  PaginatedDocumentsResponse, DocumentDownloadResponse
 from security.auth import AuthenticatedUser, verify_jwt
 from security.rbac import require_upload_permission
 from security.sanitize import assert_allowed_mime, detect_true_mime, extension_for_mime, sanitize_display_filename
 from services import storage
 from services.antivirus import scan_file
-from services.audit import write_audit_entry
+from services.audit import write_audit_entry, log_audit_event
+from services.storage import generate_presigned_download_url
+
+import asyncpg
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 security_logger = logging.getLogger("security_events")
@@ -49,6 +52,9 @@ Path(settings.QUARANTINE_DIR).mkdir(parents=True, exist_ok=True)
 ERROR_LOG_PATH = Path(__file__).resolve().parent.parent.parent / "upload_errors.log"
 
 
+
+
+
 def _log_full_traceback(context: str) -> None:
     tb_text = traceback.format_exc()
     with open(ERROR_LOG_PATH, "a", encoding="utf-8") as f:
@@ -58,6 +64,10 @@ def _log_full_traceback(context: str) -> None:
 
 def _log_security_event(event: str, user_id: int | None, detail: str) -> None:
     security_logger.warning("event=%s user_id=%s detail=%s", event, user_id, detail)
+
+def extract_client_ip(request: Request) -> str:
+    forwarded = request.headers.get("X-Forwarded-For")
+    return forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else "127.0.0.1")
 
 
 @router.post(
@@ -172,3 +182,83 @@ async def upload_document(
         # Always clean up the local quarantine file, success or failure.
         if quarantine_path.exists():
             quarantine_path.unlink(missing_ok=True)
+
+
+@router.get("/case/{case_id}", response_model=PaginatedDocumentsResponse, summary="List case documents")
+async def list_case_documents(
+    case_id: int,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    db_pool: asyncpg.Pool = Depends(get_pool),
+    user: AuthenticatedUser = Depends(verify_jwt),
+):
+    offset = (page - 1) * limit
+    async with db_pool.acquire() as conn:
+        total = await conn.fetchval("SELECT COUNT(*) FROM documents WHERE case_id = $1", case_id)
+        records = await conn.fetch(
+            """
+            SELECT id, case_id, title, document_type, file_name, 
+                   file_size_bytes, sha256_hash, uploaded_by, created_at
+            FROM documents WHERE case_id = $1, AND status != 'deleted'
+            ORDER BY created_at DESC LIMIT $2 OFFSET $3
+            """,
+            case_id, limit, offset
+        )
+
+    return PaginatedDocumentsResponse(
+        total=total,
+        page=page,
+        limit=limit,
+        documents=[DocumentResponse(**dict(r)) for r in records]
+    )
+
+@router.get("/{document_id}", response_model=DocumentResponse, summary="Get single document metadata")
+async def get_document_by_id(
+    document_id: int,
+    db_pool: asyncpg.Pool = Depends(get_pool),
+    current_user: dict = Depends(get_current_user)
+):
+    async with db_pool.acquire() as conn:
+        record = await conn.fetchrow(
+            """
+            SELECT id, case_id, title, document_type, file_name, 
+                   file_size_bytes, sha256_hash, uploaded_by, created_at
+            FROM documents WHERE id = $1
+            """,
+            document_id
+        )
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    return DocumentResponse(**dict(record))
+
+@router.get("/{document_id}/download", response_model=DocumentDownloadResponse, summary="Get access URL & log audit")
+async def get_secure_download_url(
+    document_id: int,
+    request: Request,
+    db_pool: asyncpg.Pool = Depends(get_pool),
+    current_user: dict = Depends(get_current_user)
+):
+    async with db_pool.acquire() as conn:
+        record = await conn.fetchrow("SELECT id, file_name, s3_key FROM documents WHERE id = $1", document_id)
+        if not record:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+        
+        await log_audit_event(
+            conn=conn,
+            document_id=document_id,
+            user_id=current_user["id"],
+            action="PRESIGNED_URL_GENERATED",
+            ip_address=extract_client_ip(request)
+        )
+
+    presigned_url = await generate_presigned_download_url(
+        s3_key=record["s3_key"], 
+        file_name=record["file_name"]
+    )
+
+    return DocumentDownloadResponse(
+        document_id=record["id"],
+        file_name=record["file_name"],
+        presigned_url=presigned_url,
+        expires_in_seconds=300
+    )
