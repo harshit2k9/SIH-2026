@@ -40,7 +40,7 @@ This project delivers a Secure Digital Document Management System (DMS) enabling
 | :--- | :--- | :--- |
 | **Harshit Kumar** | 🌐 **Full Stack Development** | System integration, CI/CD, deployment infrastructure, container orchestration, and cross-tier feature bridging. |
 | **Hansika** | 🎨 **Frontend Lead** | User interfaces, document viewers, role-based dashboards, and client-side security. |
-| **Manas Roy** | ⚙️ **API Team** | REST API development, authentication, authorization, and storage engine implementation. |
+| **Manas ** | ⚙️ **API Team** | REST API development, authentication, authorization, and storage engine implementation. |
 | **Hrishit Khurana** | ⚙️ **API Team** | REST API development, authentication, authorization, and storage engine implementation. |
 | **Akshat** | 💾 **Database Team** | Schema design, immutable logging, encryption at rest, and search indexing. |
 | **Ansh Goyal** | 💾 **Database Team** | Schema design, immutable logging, encryption at rest, and search indexing. |
