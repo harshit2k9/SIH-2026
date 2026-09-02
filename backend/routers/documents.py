@@ -30,7 +30,12 @@ from slowapi.util import get_remote_address
 
 from config import settings
 from database import get_pool
-from schemas import DocumentUploadResponse,  PaginatedDocumentsResponse, DocumentDownloadResponse
+from schemas import (
+    DocumentUploadResponse,
+    PaginatedDocumentsResponse,
+    DocumentDownloadResponse,
+    DocumentResponse,
+)
 from security.auth import AuthenticatedUser, verify_jwt
 from security.rbac import require_upload_permission
 from security.sanitize import assert_allowed_mime, detect_true_mime, extension_for_mime, sanitize_display_filename
@@ -194,12 +199,15 @@ async def list_case_documents(
 ):
     offset = (page - 1) * limit
     async with db_pool.acquire() as conn:
-        total = await conn.fetchval("SELECT COUNT(*) FROM documents WHERE case_id = $1", case_id)
+        total = await conn.fetchval(
+            "SELECT COUNT(*) FROM documents WHERE case_id = $1 AND status != 'deleted'",
+            case_id
+        )
         records = await conn.fetch(
             """
-            SELECT id, case_id, title, document_type, file_name, 
+            SELECT id, case_id, title, document_type, original_filename,
                    file_size_bytes, sha256_hash, uploaded_by, created_at
-            FROM documents WHERE case_id = $1, AND status != 'deleted'
+            FROM documents WHERE case_id = $1 AND status != 'deleted'
             ORDER BY created_at DESC LIMIT $2 OFFSET $3
             """,
             case_id, limit, offset
@@ -216,12 +224,12 @@ async def list_case_documents(
 async def get_document_by_id(
     document_id: int,
     db_pool: asyncpg.Pool = Depends(get_pool),
-    current_user: dict = Depends(get_current_user)
+    user: AuthenticatedUser = Depends(verify_jwt),
 ):
     async with db_pool.acquire() as conn:
         record = await conn.fetchrow(
             """
-            SELECT id, case_id, title, document_type, file_name, 
+            SELECT id, case_id, title, document_type, original_filename,
                    file_size_bytes, sha256_hash, uploaded_by, created_at
             FROM documents WHERE id = $1
             """,
@@ -236,29 +244,35 @@ async def get_secure_download_url(
     document_id: int,
     request: Request,
     db_pool: asyncpg.Pool = Depends(get_pool),
-    current_user: dict = Depends(get_current_user)
+    user: AuthenticatedUser = Depends(verify_jwt),
 ):
     async with db_pool.acquire() as conn:
-        record = await conn.fetchrow("SELECT id, file_name, s3_key FROM documents WHERE id = $1", document_id)
+        record = await conn.fetchrow(
+            """
+            SELECT id, case_id, original_filename AS file_name, storage_key AS s3_key
+            FROM documents WHERE id = $1 AND status != 'deleted'
+            """,
+            document_id
+        )
         if not record:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
-        
+
         await log_audit_event(
             conn=conn,
             document_id=document_id,
-            user_id=current_user["id"],
+            user_id=user.id,
             action="PRESIGNED_URL_GENERATED",
             ip_address=extract_client_ip(request)
         )
 
     presigned_url = await generate_presigned_download_url(
-        s3_key=record["s3_key"], 
-        file_name=record["file_name"]
+        s3_key=record["storage_key"],
+        file_name=record["original_filename"]
     )
 
     return DocumentDownloadResponse(
         document_id=record["id"],
-        file_name=record["file_name"],
+        file_name=record["original_filename"],
         presigned_url=presigned_url,
         expires_in_seconds=300
     )
