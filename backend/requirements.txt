@@ -24,3 +24,4 @@ pydantic
 pydantic-settings
 slowapi
 cryptography>=42.0.0
+typing

@@ -266,13 +266,13 @@ async def get_secure_download_url(
         )
 
     presigned_url = await generate_presigned_download_url(
-        s3_key=record["storage_key"],
-        file_name=record["original_filename"]
+        record["s3_key"],
+        file_name=record["file_name"]
     )
 
     return DocumentDownloadResponse(
         document_id=record["id"],
-        file_name=record["original_filename"],
+        file_name=record["file_name"],
         presigned_url=presigned_url,
         expires_in_seconds=300
     )
