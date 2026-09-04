@@ -43,6 +43,7 @@ CREATE TABLE public.case_stage_history (
 
 
 ALTER TABLE public.case_stage_history OWNER TO admin;
+ALTER TABLE public.case_stage_history OWNER TO postgres;
 
 --
 -- TOC entry 224 (class 1259 OID 33157)
@@ -63,6 +64,7 @@ CREATE TABLE public.cases (
 
 
 ALTER TABLE public.cases OWNER TO admin;
+ALTER TABLE public.cases OWNER TO postgres;
 
 --
 -- TOC entry 231 (class 1259 OID 33349)
@@ -86,6 +88,7 @@ CREATE TABLE public.chain_of_custody_logs (
 
 
 ALTER TABLE public.chain_of_custody_logs OWNER TO admin;
+ALTER TABLE public.chain_of_custody_logs OWNER TO postgres;
 
 --
 -- TOC entry 233 (class 1259 OID 33417)
@@ -103,6 +106,7 @@ CREATE TABLE public.court_benches (
 
 
 ALTER TABLE public.court_benches OWNER TO admin;
+ALTER TABLE public.court_benches OWNER TO postgres;
 
 --
 -- TOC entry 234 (class 1259 OID 33441)
@@ -123,6 +127,7 @@ CREATE TABLE public.court_hearings (
 
 
 ALTER TABLE public.court_hearings OWNER TO admin;
+ALTER TABLE public.court_hearings OWNER TO postgres;
 
 --
 -- TOC entry 236 (class 1259 OID 33503)
@@ -146,6 +151,7 @@ CREATE TABLE public.court_orders (
 
 
 ALTER TABLE public.court_orders OWNER TO admin;
+ALTER TABLE public.court_orders OWNER TO postgres;
 
 --
 -- TOC entry 219 (class 1259 OID 33067)
@@ -162,6 +168,7 @@ CREATE TABLE public.departments (
 
 
 ALTER TABLE public.departments OWNER TO admin;
+ALTER TABLE public.departments OWNER TO postgres;
 
 --
 -- TOC entry 232 (class 1259 OID 33388)
@@ -181,6 +188,7 @@ CREATE TABLE public.digital_signatures (
 
 
 ALTER TABLE public.digital_signatures OWNER TO admin;
+ALTER TABLE public.digital_signatures OWNER TO postgres;
 
 --
 -- TOC entry 229 (class 1259 OID 33297)
@@ -199,6 +207,7 @@ CREATE TABLE public.document_ai_metadata (
 
 
 ALTER TABLE public.document_ai_metadata OWNER TO admin;
+ALTER TABLE public.document_ai_metadata OWNER TO postgres;
 
 --
 -- TOC entry 228 (class 1259 OID 33272)
@@ -220,6 +229,7 @@ CREATE TABLE public.document_versions (
 
 
 ALTER TABLE public.document_versions OWNER TO admin;
+ALTER TABLE public.document_versions OWNER TO postgres;
 
 --
 -- TOC entry 227 (class 1259 OID 33240)
@@ -242,6 +252,7 @@ CREATE TABLE public.documents (
 
 
 ALTER TABLE public.documents OWNER TO admin;
+ALTER TABLE public.documents OWNER TO postgres;
 
 --
 -- TOC entry 226 (class 1259 OID 33214)
@@ -260,6 +271,7 @@ CREATE TABLE public.evidence_custody_transfers (
 
 
 ALTER TABLE public.evidence_custody_transfers OWNER TO admin;
+ALTER TABLE public.evidence_custody_transfers OWNER TO postgres;
 
 --
 -- TOC entry 225 (class 1259 OID 33183)
@@ -281,6 +293,7 @@ CREATE TABLE public.evidence_items (
 
 
 ALTER TABLE public.evidence_items OWNER TO admin;
+ALTER TABLE public.evidence_items OWNER TO postgres;
 
 --
 -- TOC entry 223 (class 1259 OID 33144)
@@ -299,6 +312,7 @@ CREATE TABLE public.evidence_providers (
 
 
 ALTER TABLE public.evidence_providers OWNER TO admin;
+ALTER TABLE public.evidence_providers OWNER TO postgres;
 
 --
 -- TOC entry 230 (class 1259 OID 33314)
@@ -320,6 +334,7 @@ CREATE TABLE public.inter_department_shares (
 
 
 ALTER TABLE public.inter_department_shares OWNER TO admin;
+ALTER TABLE public.inter_department_shares OWNER TO postgres;
 
 --
 -- TOC entry 235 (class 1259 OID 33466)
@@ -341,6 +356,7 @@ CREATE TABLE public.order_sheets (
 
 
 ALTER TABLE public.order_sheets OWNER TO admin;
+ALTER TABLE public.order_sheets OWNER TO postgres;
 
 --
 -- TOC entry 221 (class 1259 OID 33103)
@@ -355,6 +371,7 @@ CREATE TABLE public.roles (
 
 
 ALTER TABLE public.roles OWNER TO admin;
+ALTER TABLE public.roles OWNER TO postgres;
 
 --
 -- TOC entry 222 (class 1259 OID 33115)
@@ -372,6 +389,7 @@ CREATE TABLE public.user_departments (
 
 
 ALTER TABLE public.user_departments OWNER TO admin;
+ALTER TABLE public.user_departments OWNER TO postgres;
 
 --
 -- TOC entry 220 (class 1259 OID 33086)
@@ -390,6 +408,7 @@ CREATE TABLE public.users (
 
 
 ALTER TABLE public.users OWNER TO admin;
+ALTER TABLE public.users OWNER TO postgres;
 
 --
 -- TOC entry 237 (class 1259 OID 33541)
@@ -411,6 +430,7 @@ CREATE TABLE public.warrants_and_summons (
 
 
 ALTER TABLE public.warrants_and_summons OWNER TO admin;
+ALTER TABLE public.warrants_and_summons OWNER TO postgres;
 
 --
 -- TOC entry 5210 (class 0 OID 33575)
