@@ -42,6 +42,7 @@ CREATE TABLE public.case_stage_history (
 );
 
 
+ALTER TABLE public.case_stage_history OWNER TO admin;
 ALTER TABLE public.case_stage_history OWNER TO postgres;
 
 --
@@ -62,6 +63,7 @@ CREATE TABLE public.cases (
 );
 
 
+ALTER TABLE public.cases OWNER TO admin;
 ALTER TABLE public.cases OWNER TO postgres;
 
 --
@@ -85,6 +87,7 @@ CREATE TABLE public.chain_of_custody_logs (
 );
 
 
+ALTER TABLE public.chain_of_custody_logs OWNER TO admin;
 ALTER TABLE public.chain_of_custody_logs OWNER TO postgres;
 
 --
@@ -102,6 +105,7 @@ CREATE TABLE public.court_benches (
 );
 
 
+ALTER TABLE public.court_benches OWNER TO admin;
 ALTER TABLE public.court_benches OWNER TO postgres;
 
 --
@@ -122,6 +126,7 @@ CREATE TABLE public.court_hearings (
 );
 
 
+ALTER TABLE public.court_hearings OWNER TO admin;
 ALTER TABLE public.court_hearings OWNER TO postgres;
 
 --
@@ -145,6 +150,7 @@ CREATE TABLE public.court_orders (
 );
 
 
+ALTER TABLE public.court_orders OWNER TO admin;
 ALTER TABLE public.court_orders OWNER TO postgres;
 
 --
@@ -161,6 +167,7 @@ CREATE TABLE public.departments (
 );
 
 
+ALTER TABLE public.departments OWNER TO admin;
 ALTER TABLE public.departments OWNER TO postgres;
 
 --
@@ -180,6 +187,7 @@ CREATE TABLE public.digital_signatures (
 );
 
 
+ALTER TABLE public.digital_signatures OWNER TO admin;
 ALTER TABLE public.digital_signatures OWNER TO postgres;
 
 --
@@ -198,6 +206,7 @@ CREATE TABLE public.document_ai_metadata (
 );
 
 
+ALTER TABLE public.document_ai_metadata OWNER TO admin;
 ALTER TABLE public.document_ai_metadata OWNER TO postgres;
 
 --
@@ -219,6 +228,7 @@ CREATE TABLE public.document_versions (
 );
 
 
+ALTER TABLE public.document_versions OWNER TO admin;
 ALTER TABLE public.document_versions OWNER TO postgres;
 
 --
@@ -241,6 +251,7 @@ CREATE TABLE public.documents (
 );
 
 
+ALTER TABLE public.documents OWNER TO admin;
 ALTER TABLE public.documents OWNER TO postgres;
 
 --
@@ -259,6 +270,7 @@ CREATE TABLE public.evidence_custody_transfers (
 );
 
 
+ALTER TABLE public.evidence_custody_transfers OWNER TO admin;
 ALTER TABLE public.evidence_custody_transfers OWNER TO postgres;
 
 --
@@ -280,6 +292,7 @@ CREATE TABLE public.evidence_items (
 );
 
 
+ALTER TABLE public.evidence_items OWNER TO admin;
 ALTER TABLE public.evidence_items OWNER TO postgres;
 
 --
@@ -298,6 +311,7 @@ CREATE TABLE public.evidence_providers (
 );
 
 
+ALTER TABLE public.evidence_providers OWNER TO admin;
 ALTER TABLE public.evidence_providers OWNER TO postgres;
 
 --
@@ -319,6 +333,7 @@ CREATE TABLE public.inter_department_shares (
 );
 
 
+ALTER TABLE public.inter_department_shares OWNER TO admin;
 ALTER TABLE public.inter_department_shares OWNER TO postgres;
 
 --
@@ -340,6 +355,7 @@ CREATE TABLE public.order_sheets (
 );
 
 
+ALTER TABLE public.order_sheets OWNER TO admin;
 ALTER TABLE public.order_sheets OWNER TO postgres;
 
 --
@@ -354,6 +370,7 @@ CREATE TABLE public.roles (
 );
 
 
+ALTER TABLE public.roles OWNER TO admin;
 ALTER TABLE public.roles OWNER TO postgres;
 
 --
@@ -371,6 +388,7 @@ CREATE TABLE public.user_departments (
 );
 
 
+ALTER TABLE public.user_departments OWNER TO admin;
 ALTER TABLE public.user_departments OWNER TO postgres;
 
 --
@@ -389,6 +407,7 @@ CREATE TABLE public.users (
 );
 
 
+ALTER TABLE public.users OWNER TO admin;
 ALTER TABLE public.users OWNER TO postgres;
 
 --
@@ -410,6 +429,7 @@ CREATE TABLE public.warrants_and_summons (
 );
 
 
+ALTER TABLE public.warrants_and_summons OWNER TO admin;
 ALTER TABLE public.warrants_and_summons OWNER TO postgres;
 
 --

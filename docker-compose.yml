@@ -1,9 +1,10 @@
-version: "3.8"
+#version: "3.8"
 
 services:
   # --- Database Service ---
   postgres:
-    image: postgres:16
+    image: postgres:17
+    #changed the version from 16 to 17 for the transaction_timeout feature
     container_name: sddms_postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -12,8 +13,9 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+      #- ./sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql
       - pgdata:/var/lib/postgresql/data
+      - ./database/SIH_DATABASE.sql:/docker-entrypoint-initdb.d/01_sih_database.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
