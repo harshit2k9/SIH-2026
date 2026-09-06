@@ -1,27 +1,30 @@
-# database.py
 import asyncpg
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 from config import settings
 
-# Sync SQLite configuration for local ORM operations
-SQLALCHEMY_DATABASE_URL = settings.SQLALCHEMY_DATABASE_URL
+# PostgreSQL Synchronous SQLAlchemy URL
+SQLALCHEMY_DATABASE_URL = settings.DATABASE_URL
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False} if "sqlite" in SQLALCHEMY_DATABASE_URL else {}
+    pool_size=10,
+    max_overflow=20,
+    pool_pre_ping=True,
+    connect_args={"connect_timeout": 10}  # Fails after 2s instead of hanging
 )
 
 SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
-    bind=engine
+    bind=engine,
 )
 
 Base = declarative_base()
 
 # Async PostgreSQL connection pool configuration
 _pool: asyncpg.Pool | None = None
+
 
 async def init_db_pool() -> None:
     global _pool

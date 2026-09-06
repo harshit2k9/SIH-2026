@@ -17,8 +17,12 @@ class Settings(BaseSettings):
     def DATABASE_URL(self) -> str:
         return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
-    SQLALCHEMY_DATABASE_URL: str = "sqlite:///./sih26.db"
-
+    @computed_field
+    @property
+    def SQLALCHEMY_DATABASE_URL(self) -> str:
+        # Drivers like psycopg2 can be explicitly specified if required:
+        # return f"postgresql+psycopg2://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        return self.DATABASE_URL
     # Connection pool tuning
     DB_POOL_MIN_SIZE: int = 10
     DB_POOL_MAX_SIZE: int = 30

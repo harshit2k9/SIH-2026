@@ -1,10 +1,9 @@
-#version: "3.8"
+version: "3.8"
 
 services:
   # --- Database Service ---
   postgres:
     image: postgres:17
-    #changed the version from 16 to 17 for the transaction_timeout feature
     container_name: sddms_postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -13,14 +12,15 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      #- ./sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql
       - pgdata:/var/lib/postgresql/data
       - ./database/SIH_DATABASE.sql:/docker-entrypoint-initdb.d/01_sih_database.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - app-net
 
   # --- Object Storage Service ---
   minio:
@@ -40,6 +40,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - app-net
 
   # --- Antivirus Scanner Service ---
   clamav:
@@ -50,22 +52,34 @@ services:
     volumes:
       - clamdata:/var/lib/clamav
     healthcheck:
-      test: ["CMD", "sh", "-c", "echo PING | nc localhost 3310"]
+      test: ["CMD-SHELL", "echo PING | nc 127.0.0.1 3310"]
       interval: 10s
       timeout: 5s
       retries: 10
+    networks:
+      - app-net
 
   # --- Application Backend ---
   backend:
     build: ./backend
     container_name: dms_backend
+    env_file:
+      - .env
     ports:
       - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
-      DATABASE_URL: ${DATABASE_URL}
+      PYTHONUNBUFFERED: 1
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@host.docker.internal:5432/${POSTGRES_DB}
+      MINIO_ENDPOINT: http://host.docker.internal:9000
     depends_on:
       postgres:
         condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - app-net
 
   # --- Application Frontend ---
   frontend:
@@ -77,6 +91,12 @@ services:
       - VITE_API_URL=${VITE_API_URL}
     depends_on:
       - backend
+    networks:
+      - app-net
+
+networks:
+  app-net:
+    driver: bridge
 
 volumes:
   pgdata:

@@ -189,8 +189,25 @@ def is_valid_aadhaar_document(image_bytes: bytes) -> bool:
 # ============================================================
 # DATABASE
 # ============================================================
-Base.metadata.create_all(bind=engine)
+import time
+from sqlalchemy.exc import OperationalError
 
+# Wrap table creation in a retry loop
+max_retries = 10
+retry_delay = 3  # seconds
+
+for attempt in range(1, max_retries + 1):
+    try:
+        print(f"Connecting to database... (Attempt {attempt}/{max_retries})")
+        Base.metadata.create_all(bind=engine)
+        print("Successfully connected and synchronized database schema.")
+        break
+    except OperationalError as err:
+        if attempt == max_retries:
+            print("Failed to connect to the database after maximum attempts.")
+            raise err
+        print(f"Database not ready yet ({err.orig}). Retrying in {retry_delay}s...")
+        time.sleep(retry_delay)
 
 def get_db():
     db = SessionLocal()
@@ -198,7 +215,6 @@ def get_db():
         yield db
     finally:
         db.close()
-
 
 # ============================================================
 # TEMPLATES / STATIC
