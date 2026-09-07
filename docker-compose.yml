@@ -1,4 +1,5 @@
-#version: "3.8"
+#version: "3.8" 
+#since docker no longer needs to specify the version
 
 services:
   # --- Database Service ---
@@ -58,15 +59,34 @@ services:
   # --- Application Backend ---
   backend:
     build: ./backend
+    #.env file is also needed in backened folder therefore instead of copying it to backend folder, we can use env_file to load the environment variables from the .env file in the root directory
+    env_file:
+      - .env
     container_name: dms_backend
+    # Explicitly run Uvicorn with multiple workers and no --reload in production for better performance and stability
+    #command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
     ports:
       - "8000:8000"
     environment:
       DATABASE_URL: ${DATABASE_URL}
+      MINIO_ENDPOINT_URL: http://minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: ${MINIO_BUCKET}
+      MINIO_USE_SSL: ${MINIO_USE_SSL}
+      MINIO_ENABLE_SSE: ${MINIO_ENABLE_SSE}
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: ${CLAMAV_PORT}
+      ENABLE_AV_SCAN: ${ENABLE_AV_SCAN}
+      MAX_FILE_SIZE_BYTES: ${MAX_FILE_SIZE_BYTES}
     depends_on:
       postgres:
         condition: service_healthy
-
+      minio:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy 
+      
   # --- Application Frontend ---
   frontend:
     build: ./frontend
