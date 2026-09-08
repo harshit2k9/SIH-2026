@@ -10,18 +10,28 @@ Flow (mirrors the design confirmed with the team):
   6. Magic-byte MIME validation
   7. ClamAV scan
   8. Move to MinIO (encrypted, bucket-versioned)
-  9. Single DB transaction: insert document row + hash-chained audit entry
+  9. Single DB transaction: insert document row + document_version row + hash-chained audit entry
+
   10. Return minimal metadata (never expose internal storage path)
 
 Every failure path cleans up the quarantine file and (if applicable) the
 uploaded MinIO object, and logs a security event without leaking internal
 details to the client.
+
+
+SCHEMA NOTES (Production):
+- documents table: metadata only (case_id, title, document_type, confidentiality_level, current_version, etc.)
+- document_versions table: file storage details (version_number, storage_uri, sha256_checksum, file_size_bytes, etc.)
+- All IDs are UUIDs, not integers
+- document_versions has unique constraint on (document_id, version_number)
+
 """
 import logging
 import traceback
 import uuid
 from hashlib import sha256
 from pathlib import Path
+from typing import Optional
 
 import aiofiles
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status, Query
@@ -67,7 +77,7 @@ def _log_full_traceback(context: str) -> None:
     print(f"\n>>> FULL ERROR TRACEBACK WRITTEN TO: {ERROR_LOG_PATH}\n")
 
 
-def _log_security_event(event: str, user_id: int | None, detail: str) -> None:
+def _log_security_event(event: str, user_id: Optional[uuid.UUID], detail: str) -> None:
     security_logger.warning("event=%s user_id=%s detail=%s", event, user_id, detail)
 
 def extract_client_ip(request: Request) -> str:
@@ -83,9 +93,12 @@ def extract_client_ip(request: Request) -> str:
 @limiter.limit(settings.RATE_LIMIT_UPLOAD)
 async def upload_document(
     request: Request,
-    case_id: int = Form(...),
+    case_id: uuid.UUID = Form(...),
     title: str = Form(...),
     document_type: str = Form(...),
+        confidentiality_level: int = Form(default=1),
+    evidence_item_id: Optional[uuid.UUID] = Form(None),
+    document_number: Optional[str] = Form(None),
     file: UploadFile = File(...),
     user: AuthenticatedUser = Depends(verify_jwt),
 ):
@@ -139,35 +152,68 @@ async def upload_document(
 
         await storage.upload_file(str(quarantine_path), storage_key, true_mime)
 
-        # --- 9. Atomic DB write: document row + audit entry together ---
+        # --- 9. Atomic DB write: document row + document_version row + audit entry together ---
+
         pool = get_pool()
         safe_filename = sanitize_display_filename(file.filename or "unnamed")
 
         try:
             async with pool.acquire() as conn:
                 async with conn.transaction():
+                    # Insert into documents table (metadata)
+
                     document_id = await conn.fetchval(
                         """
-                        INSERT INTO documents
-                            (case_id, title, document_type, original_filename,
-                             uploaded_by, status, storage_key, mime_type,
-                             file_size_bytes, sha256_hash, created_at, updated_at)
-                        VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, $8, $9, NOW(), NOW())
+                                                    (id, case_id, evidence_item_id, document_number, title,
+                             document_type, confidentiality_level, current_version,
+                             created_by, created_at, is_locked)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), false)
                         RETURNING id
                         """,
-                        case_id, title, document_type, safe_filename,
-                        user.id, storage_key, true_mime, bytes_written, file_hash,
+                        document_uuid, case_id, evidence_item_id, document_number, title,
+                        document_type, confidentiality_level, 1, user.id,
                     )
+
+                    # Insert into document_versions table (file storage details)
+                    version_id = await conn.fetchval(
+                        """
+                        INSERT INTO document_versions
+                            (id, document_id, version_number, storage_uri, file_size_bytes,
+                             file_mime_type, sha256_checksum, uploaded_by, uploaded_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+
+                        RETURNING id
+                        """,
+                        document_uuid, case_id, evidence_item_id, document_number, title,
+                        document_type, confidentiality_level, 1, user.id,
+                    )
+                    # Insert into document_versions table (file storage details)
+                    version_id = await conn.fetchval(
+                        """
+                        INSERT INTO document_versions
+                            (id, document_id, version_number, storage_uri, file_size_bytes,
+                             file_mime_type, sha256_checksum, uploaded_by, uploaded_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+                        RETURNING id
+                        """,
+                        uuid.uuid4(), document_id, 1, storage_key, bytes_written,
+                        true_mime, file_hash, user.id,
+
+                    ) 
+                    #write audit entry (hash-chained)                   
                     entry_hash = await write_audit_entry(
                         conn,
                         document_id=document_id,
                         actor_id=user.id,
                         action="UPLOAD",
-                        details={"sha256": file_hash, "size_bytes": bytes_written, "mime": true_mime},
+                        details={"sha256": file_hash, "size_bytes": bytes_written, "mime": true_mime, "version_id": str(version_id), "storage_key": storage_key},
                     )
-        except Exception:
+        except Exception as db_exc:
+:
             # DB write failed after object storage succeeded -> roll back storage too
             await storage.delete_object(storage_key)
+            
+            _log_security_event("DB_ROLLBACK", user.id, f"storage_cleanup_performed: {str(db_exc)}")
             raise
 
         return DocumentUploadResponse(
@@ -191,7 +237,7 @@ async def upload_document(
 
 @router.get("/case/{case_id}", response_model=PaginatedDocumentsResponse, summary="List case documents")
 async def list_case_documents(
-    case_id: int,
+    case_id: uuid.UUID,
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     db_pool: asyncpg.Pool = Depends(get_pool),
@@ -200,15 +246,22 @@ async def list_case_documents(
     offset = (page - 1) * limit
     async with db_pool.acquire() as conn:
         total = await conn.fetchval(
-            "SELECT COUNT(*) FROM documents WHERE case_id = $1 AND status != 'deleted'",
+        "SELECT COUNT(*) FROM documents WHERE case_id = $1",
+
             case_id
         )
         records = await conn.fetch(
             """
-            SELECT id, case_id, title, document_type, original_filename,
-                   file_size_bytes, sha256_hash, uploaded_by, created_at
-            FROM documents WHERE case_id = $1 AND status != 'deleted'
-            ORDER BY created_at DESC LIMIT $2 OFFSET $3
+            SELECT d.id, d.case_id, d.title, d.document_type, d.document_number,
+                   dv.file_size_bytes, dv.sha256_checksum, d.created_by, d.created_at,
+                   d.current_version, d.confidentiality_level
+            FROM documents d
+            JOIN document_versions dv ON d.id = dv.document_id
+                AND dv.version_number = d.current_version
+            WHERE d.case_id = $1
+            ORDER BY d.created_at DESC
+            LIMIT $2 OFFSET $3
+
             """,
             case_id, limit, offset
         )
@@ -222,16 +275,21 @@ async def list_case_documents(
 
 @router.get("/{document_id}", response_model=DocumentResponse, summary="Get single document metadata")
 async def get_document_by_id(
-    document_id: int,
+    document_id: uuid.UUID,
     db_pool: asyncpg.Pool = Depends(get_pool),
     user: AuthenticatedUser = Depends(verify_jwt),
 ):
     async with db_pool.acquire() as conn:
         record = await conn.fetchrow(
             """
-            SELECT id, case_id, title, document_type, original_filename,
-                   file_size_bytes, sha256_hash, uploaded_by, created_at
-            FROM documents WHERE id = $1
+            SELECT d.id, d.case_id, d.title, d.document_type, d.document_number,
+                   dv.file_size_bytes, dv.sha256_checksum, d.created_by, d.created_at,
+                   d.current_version, d.confidentiality_level
+            FROM documents d
+            JOIN document_versions dv ON d.id = dv.document_id
+                AND dv.version_number = d.current_version
+            WHERE d.id = $1
+
             """,
             document_id
         )
@@ -241,7 +299,7 @@ async def get_document_by_id(
 
 @router.get("/{document_id}/download", response_model=DocumentDownloadResponse, summary="Get access URL & log audit")
 async def get_secure_download_url(
-    document_id: int,
+    document_id: uuid.UUID,
     request: Request,
     db_pool: asyncpg.Pool = Depends(get_pool),
     user: AuthenticatedUser = Depends(verify_jwt),
@@ -249,8 +307,12 @@ async def get_secure_download_url(
     async with db_pool.acquire() as conn:
         record = await conn.fetchrow(
             """
-            SELECT id, case_id, original_filename AS file_name, storage_key AS s3_key
-            FROM documents WHERE id = $1 AND status != 'deleted'
+            SELECT d.id, d.case_id, d.document_number AS file_name, dv.storage_uri AS s3_key
+            FROM documents d
+            JOIN document_versions dv ON d.id = dv.document_id
+                AND dv.version_number = d.current_version
+            WHERE d.id = $1
+
             """,
             document_id
         )
