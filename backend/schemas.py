@@ -4,7 +4,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-
 class DocumentUploadResponse(BaseModel):
     document_id: UUID
     sha256: str

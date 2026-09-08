@@ -14,6 +14,7 @@ Security decisions:
   timing side-channels.
 """
 import hmac
+import uuid
 from datetime import datetime, timezone
 from functools import lru_cache
 
@@ -34,10 +35,10 @@ def _load_public_key() -> str:
 
 
 class AuthenticatedUser:
-    def __init__(self, user_id: int, roles: list[str], jti: str):
+    def __init__(self, user_id: uuid.UUID, roles: list[str], token_jti: str):
         self.id = user_id
         self.roles = roles
-        self.jti = jti
+        self.token_jti = token_jti
 
 
 async def verify_jwt(
@@ -61,19 +62,19 @@ async def verify_jwt(
         # Deliberately generic message — don't leak *why* verification failed.
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
 
-    jti = payload["jti"]
+    token_jti = payload["jti"]
     pool = get_pool()
     revoked = await pool.fetchval(
-        "SELECT 1 FROM revoked_tokens WHERE jti = $1 AND expires_at > NOW()",
-        jti,
+        "SELECT 1 FROM revoked_tokens WHERE token_jti = $1 AND expires_at > NOW()",
+        token_jti,
     )
     if revoked:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token has been revoked")
 
     return AuthenticatedUser(
-        user_id=int(payload["sub"]),
+        user_id=uuid.UUID(payload["sub"]),
         roles=payload.get("roles", []),
-        jti=jti,
+        token_jti=token_jti,
     )
 
 
