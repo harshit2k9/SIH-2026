@@ -1835,6 +1835,16 @@ ALTER TABLE ONLY public.warrants_and_summons
     ADD CONSTRAINT warrants_and_summons_executing_officer_id_fkey FOREIGN KEY (executing_officer_id) REFERENCES public.users(id);
 
 
+CREATE TABLE IF NOT EXISTS public.revoked_tokens (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    token_jti character varying NOT NULL UNIQUE,
+    revoked_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    expires_at timestamp with time zone NOT NULL
+);
+
+CREATE INDEX idx_revoked_tokens_jti ON public.revoked_tokens(token_jti);
+CREATE INDEX idx_revoked_tokens_expires ON public.revoked_tokens(expires_at);
+
 -- Completed on 2026-09-02 20:58:27
 
 --
