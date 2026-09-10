@@ -2,7 +2,7 @@
 Async object storage wrapper (MinIO, S3-compatible) using aioboto3.
 Files are keyed by case_id/document_uuid so access-control checks at the
 API layer naturally map onto a predictable, non-guessable storage path.
-Server-side encryption is requested on every upload.
+Server-side encryption (AES256) is enforced on every upload.
 """
 import asyncio
 import logging
@@ -17,7 +17,7 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 _boto_config = BotoConfig(
-    max_pool_connections=50,   # match/exceed expected concurrent uploads
+    max_pool_connections=50,   # match/exceed expected concurrent uploads (great for batch)
     retries={"max_attempts": 3, "mode": "standard"},
     connect_timeout=5,
     read_timeout=30,
@@ -35,7 +35,7 @@ def _client_kwargs():
         endpoint_url=settings.MINIO_ENDPOINT_URL,
         aws_access_key_id=settings.MINIO_ROOT_USER,
         aws_secret_access_key=settings.MINIO_ROOT_PASSWORD,
-        use_ssl=settings.MINIO_USE_SSL,
+        use_ssl=settings.MINIO_USE_SSL, # Ensure this is False for http://minio:9000 in dev
         config=_boto_config,
     )
 
@@ -62,7 +62,7 @@ async def ensure_bucket(max_retries: int = MAX_RETRIES, delay: float = RETRY_DEL
 
 
 async def upload_file(local_path: str, storage_key: str, content_type: str) -> None:
-    """Upload a file to MinIO/S3 with server-side encryption."""
+    """Upload a file to MinIO/S3 with mandatory server-side encryption."""
     async with _session.client("s3", **_client_kwargs()) as s3:
         with open(local_path, "rb") as f:
             await s3.upload_fileobj(
@@ -71,11 +71,10 @@ async def upload_file(local_path: str, storage_key: str, content_type: str) -> N
                 storage_key,
                 ExtraArgs={
                     "ContentType": content_type,
-                    # Note: MinIO supports SSE-S3 but not SSE-C/SSE-KMS in all configurations
-                    # "ServerSideEncryption": "AES256",  # optional
+                    "ServerSideEncryption": "AES256",  # 🔒 Enforced encryption at rest
                 },
             )
-    logger.debug(f"Uploaded file to storage key: {storage_key}")
+    logger.debug(f"Uploaded encrypted file to storage key: {storage_key}")
 
 
 async def delete_object(storage_key: str) -> None:
@@ -90,14 +89,16 @@ async def generate_presigned_download_url(
     file_name: Optional[str] = None,
     expires_in: int = 300
 ) -> str:
-    """Generates a short-lived presigned URL with optional inline browser disposition."""
+    """Generates a short-lived presigned URL forcing download with the original filename."""
     params = {
         "Bucket": settings.MINIO_BUCKET,
         "Key": storage_key,
     }
 
     if file_name:
-        params["ResponseContentDisposition"] = f'inline; filename="{file_name}"'
+        # 📥 Use 'attachment' to force download and preserve the user-friendly filename
+        # instead of 'inline' which might expose the ugly UUID storage key on save.
+        params["ResponseContentDisposition"] = f'attachment; filename="{file_name}"'
 
     async with _session.client("s3", **_client_kwargs()) as s3:
         url = await s3.generate_presigned_url(
@@ -117,5 +118,5 @@ async def get_object_metadata(storage_key: str) -> dict:
             "content_length": response.get("ContentLength"),
             "content_type": response.get("ContentType"),
             "last_modified": response.get("LastModified"),
-            "etag": response.get("ETag"),
+            "etag": response.get("ETag"), # ETag is often the MD5 hash, useful for integrity checks
         }

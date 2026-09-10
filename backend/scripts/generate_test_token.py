@@ -59,14 +59,22 @@ def main():
     # Guarantee keys exist prior to loading private.pem
     ensure_jwt_keys()
 
-    user_id = sys.argv[1] if len(sys.argv) > 1 else "1"
+    raw_user_id = sys.argv[1] if len(sys.argv) > 1 else str(uuid.uuid4())
+    
+    # Force it to be a valid UUID string. If the user passes "admin", it will 
+    # catch the ValueError and generate a valid random UUID instead.
+    try:
+        valid_user_id = str(uuid.UUID(raw_user_id))
+    except ValueError:
+        print(f"⚠️ Warning: '{raw_user_id}' is not a valid UUID. Generating a random one for the 'sub' claim.")
+        valid_user_id = str(uuid.uuid4())
 
     with open(PRIVATE_KEY_PATH, "r") as f:
         private_key = f.read()
 
     now = int(time.time())
     payload = {
-        "sub": user_id,
+        "sub": valid_user_id,  # ✅ Now guaranteed to be a valid UUID string
         "roles": ["investigator"],
         "iat": now,
         "exp": now + 900,  # 15 minute expiry
@@ -76,7 +84,9 @@ def main():
     }
 
     token = jwt.encode(payload, private_key, algorithm="RS256")
+    print("\n✅ Generated Valid Test Token:\n")
     print(token)
+    print("\n")
 
 
 if __name__ == "__main__":
