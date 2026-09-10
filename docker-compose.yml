@@ -36,15 +36,7 @@ services:
       - "9001:9001"   # Web console
     volumes:
       - miniodata:/data
-    healthcheck:
-      #test: ["CMD", "mc", "ready", "local"]
-      #test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      #test: ["CMD-SHELL", "wget -q --spider http://localhost:9000/minio/health/live || exit 1"]
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9000/minio/health/live"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+    
   # --- Antivirus Scanner Service ---
   clamav:
     image: clamav/clamav:latest
@@ -86,7 +78,7 @@ services:
       postgres:
         condition: service_healthy
       minio:
-        condition: service_healthy
+        condition: service_started 
       clamav:
         condition: service_healthy 
       
