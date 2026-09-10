@@ -17,6 +17,7 @@ services:
       #- ./sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql
       - pgdata:/var/lib/postgresql/data
       - ./database/SIH_DATABASE.sql:/docker-entrypoint-initdb.d/01_sih_database.sql
+      - ./database/test_database.sql:/docker-entrypoint-initdb.d/02_sih_tables.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
