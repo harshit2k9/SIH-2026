@@ -9,6 +9,7 @@ row with no corresponding audit trail, or vice versa.
 """
 import hashlib
 import json
+from tkinter import INSERT
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -16,7 +17,7 @@ from typing import Any
 import asyncpg
 
 # Fixed integer for the advisory lock. 
-# This prevents hash-chain forking without locking the entire audit_log table.
+# This prevents hash-chain forking without locking the entire chain_of_custody_logs table.
 AUDIT_CHAIN_LOCK_ID = 867530901 
 
 def _compute_entry_hash(
@@ -47,7 +48,7 @@ async def write_audit_entry(
     document_id: uuid.UUID | None = None,
     details: dict[str, Any] | None = None,
 ) -> str:
-    """Writes a hash-chained entry to audit_log. Uses advisory locks for better concurrency."""
+    """Writes a hash-chained entry to chain_of_custody_logs. Uses advisory locks for better concurrency."""
     details_payload = details or {}
     
     # Use ISO format timestamp for the hash payload
@@ -61,7 +62,7 @@ async def write_audit_entry(
     await conn.execute("SELECT pg_advisory_xact_lock($1)", AUDIT_CHAIN_LOCK_ID)
 
     prev_hash: str | None = await conn.fetchval(
-        "SELECT entry_hash FROM audit_log ORDER BY id DESC LIMIT 1"
+        "SELECT entry_hash FROM chain_of_custody_logs ORDER BY id DESC LIMIT 1"
     )
 
     entry_hash = _compute_entry_hash(
@@ -74,17 +75,11 @@ async def write_audit_entry(
     )
 
     await conn.execute(
-        """
-        INSERT INTO audit_log (document_id, actor_id, action, details, prev_hash, entry_hash, created_at)
-        VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)
-        """,
-        document_id,
-        actor_id,
-        action,
-        json.dumps(details_payload, default=str), # default=str safely handles any leftover UUIDs in details
-        prev_hash,
-        entry_hash,
-        current_time,
+        """INSERT INTO chain_of_custody_logs 
+    (case_id, document_id, evidence_id, actor_id, actor_department_id, action, ip_address, user_agent, previous_log_hash, current_log_hash)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    """,
+    case_id, document_id, evidence_id, actor_id, department_id, action, ip_address, user_agent, prev_hash, entry_hash
     )
 
     return entry_hash

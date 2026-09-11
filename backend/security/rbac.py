@@ -4,12 +4,12 @@ Python), and every query here uses parameterized placeholders ($1, $2...)
 so user-controlled values can NEVER be interpolated into SQL text.
 """
 from fastapi import HTTPException, status
-
+import uuid
 from database import get_pool
 from security.auth import AuthenticatedUser
 
 
-async def require_upload_permission(user: AuthenticatedUser, case_id: int) -> None:
+async def require_upload_permission(user: AuthenticatedUser, case_id: uuid.UUID) -> None:
     pool = get_pool()
     # Parameterized query -- asyncpg sends $1/$2 as bind params over the wire,
     # never string-concatenated. This closes the SQL injection vector entirely

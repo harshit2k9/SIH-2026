@@ -63,7 +63,7 @@ Path(settings.QUARANTINE_DIR).mkdir(parents=True, exist_ok=True)
 # findable, regardless of terminal scrollback or logging config quirks.
 ERROR_LOG_PATH = Path(__file__).resolve().parent.parent.parent / "upload_errors.log"
 
-
+ALLOWED_DOC_TYPES = {"FIR", "ChargeSheet", "Evidence", "Forensic Report", "Witness Statement", "Legal Notice", "Other"}
 def _log_full_traceback(context: str) -> None:
     tb_text = traceback.format_exc()
     with open(ERROR_LOG_PATH, "a", encoding="utf-8") as f:
@@ -97,6 +97,26 @@ async def upload_document(
     file: UploadFile = File(...),
     user: AuthenticatedUser = Depends(verify_jwt),
 ):
+    document_type: str = Form(...),
+    confidentiality_level: int = Form(default=1),
+
+     # 1. Validate Document Type
+    """if document_type not in ALLOWED_DOC_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid document_type. Must be one of: {', '.join(ALLOWED_DOC_TYPES)}"
+        )"""
+    if document_type not in ALLOWED_DOC_TYPES:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Invalid document type.")
+    elif document_type == "Other" and not document_number: # or a new 'remarks' field
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A description is required for 'Other' document types.")
+    # 2. Validate Confidentiality Level (e.g., 1 to 5)
+    if not (1 <= confidentiality_level <= 5):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="confidentiality_level must be between 1 and 5."
+        )
+    
     # --- 3. RBAC ---
     await require_upload_permission(user, case_id)
 
@@ -173,12 +193,12 @@ async def upload_document(
                         """
                         INSERT INTO document_versions
                             (id, document_id, version_number, storage_uri, file_size_bytes,
-                             file_mime_type, sha256_checksum, uploaded_by, uploaded_at)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+                             file_mime_type, sha256_checksum,kms_key_id, uploaded_by, uploaded_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
                         RETURNING id
                         """,
                         uuid.uuid4(), document_id, 1, storage_key, bytes_written,
-                        true_mime, file_hash, user.id,
+                        true_mime, file_hash, kms_key_id, user.id,
                     )
 
                     # Write hash-chained audit entry with complete version tracking

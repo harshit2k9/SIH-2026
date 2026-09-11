@@ -5,10 +5,12 @@ import secrets
 import time
 import uuid
 
+from contextlib import asynccontextmanager
+
 import bcrypt
 from database import SessionLocal, engine
 import easyocr
-from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
+from fastapi import APIRouter, Depends,HTTPException, FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -38,13 +40,16 @@ from starlette.middleware.sessions import SessionMiddleware
 # ============================================================
 # PATHS
 # ============================================================
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
 UPLOADS_DIR = BASE_DIR / "uploads"
 AADHAAR_DIR = UPLOADS_DIR / "aadhaar"
 LIVE_PHOTO_DIR = UPLOADS_DIR / "live_photos"
-logging.basicConfig(level=logging.INFO)
+
 for folder in [
     TEMPLATES_DIR,
     STATIC_DIR,
@@ -54,13 +59,6 @@ for folder in [
 ]:
     folder.mkdir(exist_ok=True)
 
-# ============================================================
-# FASTAPI
-# ============================================================
-app = FastAPI(
-    title="SIH26 Secure Document Management System",
-    version="1.0.0",
-)
 
 # ============================================================
 # SESSION COOKIE
@@ -68,13 +66,62 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-SESSION_SECRET = os.getenv(
+"""SESSION_SECRET = os.getenv(
     "SIH26_SESSION_SECRET",
     "DEV-ONLY-CHANGE-THIS-BEFORE-PRODUCTION-" + secrets.token_hex(32),
+)"""
+SESSION_SECRET = os.getenv("SIH26_SESSION_SECRET")
+if not SESSION_SECRET:
+    import warnings
+    warnings.warn(
+        "SIH26_SESSION_SECRET not set! Generating random secret. "
+        "This will break sessions on restart. Set it in .env for production!"
+    )
+    SESSION_SECRET = secrets.token_hex(32)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info("Initializing database pool and storage...")
+    await init_db_pool()
+    await ensure_bucket()
+    yield
+    # Shutdown
+    logger.info("Shutting down, closing database pool...")
+    await close_db_pool()
+
+# ============================================================
+# FASTAPI APP
+# ============================================================
+app = FastAPI(
+    title="SIH26 Secure Document Management System",
+    version="1.0.0",
+    lifespan=lifespan,
 )
+app = FastAPI(lifespan=lifespan)
 
 
-# 1. Session Middleware configuration
+app.include_router(documents_router)
+app.include_router(router)
+# ============================================================
+# MIDDLEWARE
+# ============================================================
+# 1. Rate Limiting
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# 2. Session Middleware configuration
+# 2. Session Middleware
+SESSION_SECRET = os.getenv("SIH26_SESSION_SECRET")
+if not SESSION_SECRET:
+    warnings.warn(
+        "SIH26_SESSION_SECRET not set! Generating random secret. "
+        "This will break sessions on container restart. Set it in .env for production!",
+        RuntimeWarning,
+        stacklevel=2
+    )
+    SESSION_SECRET = secrets.token_hex(32)
+
 app.add_middleware(
     SessionMiddleware,
     secret_key=SESSION_SECRET,
@@ -83,34 +130,25 @@ app.add_middleware(
     same_site="lax",
     https_only=False,  # Set to True when deployed over HTTPS
 )
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
 
-# 2. CORS Middleware configuration
+# 3. CORS Middleware configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://your-frontend-domain.example"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["POST", "GET"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
+    expose_headers=["Content-Length", "X-Request-ID"],
 )
-
-@app.on_event("startup")
-async def on_startup():
-    await init_db_pool()
-    await ensure_bucket()
-
-
-@app.on_event("shutdown")
-async def on_shutdown():
-    await close_db_pool()
-
-
-app.include_router(documents_router)
-
 
 # ============================================================
 # OCR & VERHOEFF VERIFICATION SETUP
 # ============================================================
+logger.info("Loading EasyOCR models (this may take 15-30 seconds)...")
 ocr_reader = easyocr.Reader(["en", "hi"], gpu=False)
+logger.info("EasyOCR models loaded successfully.")
+
 
 
 VERHOEFF_D = [
@@ -189,7 +227,7 @@ def is_valid_aadhaar_document(image_bytes: bytes) -> bool:
 # ============================================================
 # DATABASE
 # ============================================================
-Base.metadata.create_all(bind=engine)
+#Base.metadata.create_all(bind=engine)
 
 
 def get_db():
@@ -856,3 +894,91 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
 def logout(request: Request):
     request.session.clear()
     return RedirectResponse(url="/login", status_code=303)
+
+
+#------session id and token transfer---------
+router = APIRouter()
+
+
+class TokenRequest(BaseModel):
+    # The frontend will send the session cookie automatically
+    pass
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+
+@router.post("/api/auth/token", response_model=TokenResponse)
+async def get_access_token(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """
+    Exchange session cookie for JWT access token.
+    
+    This endpoint validates the user's session (from login) and returns
+    a JWT token that can be used for API authentication.
+    """
+    # 1. Get user from session (set during HTML login)
+    authenticated = request.session.get("authenticated")
+    user_uid = request.session.get("user_uid")
+    
+    if not authenticated or not user_uid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated. Please login first."
+        )
+    
+    # 2. Fetch user from database
+    user = get_user_by_uid(db, user_uid)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # 3. Verify user is active and MFA-enabled
+    if user.registration_status != "ACTIVE" or not user.mfa_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account not fully activated"
+        )
+    
+    # 4. Get user's department (needed for RBAC)
+    # You'll need to add this query to fetch department_id
+    department_result = await db.execute(
+        """
+        SELECT department_id 
+        FROM user_departments 
+        WHERE user_id = $1 AND is_primary = TRUE
+        """,
+        user.id
+    )
+    department_id = department_result.fetchone().department_id if department_result else None
+    
+    # 5. Generate JWT token
+    now = datetime.utcnow()
+    payload = {
+        "sub": str(user.id),                    # User UUID as string
+        "email": user.email,
+        "roles": ["investigator"],              # Fetch from user_departments.role_id
+        "department_id": str(department_id) if department_id else None,
+        "iat": now,
+        "exp": now + timedelta(minutes=30),     # 30 minute expiry
+        "jti": str(uuid.uuid4()),               # Unique token ID
+        "aud": settings.JWT_AUDIENCE,
+        "iss": settings.JWT_ISSUER,
+    }
+    
+    # 6. Sign with private key
+    with open(settings.JWT_PRIVATE_KEY_PATH, "r") as f:
+        private_key = f.read()
+    
+    access_token = jwt.encode(payload, private_key, algorithm="RS256")
+    
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        expires_in=1800  # 30 minutes
+    )

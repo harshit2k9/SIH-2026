@@ -3,6 +3,9 @@ import asyncpg
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 from config import settings
+import time
+import json
+from typing import Optional
 
 # Sync SQLite configuration for local ORM operations
 SQLALCHEMY_DATABASE_URL = settings.SQLALCHEMY_DATABASE_URL
