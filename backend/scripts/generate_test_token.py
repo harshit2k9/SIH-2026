@@ -75,7 +75,7 @@ def main():
 
     now = int(time.time())
     payload = {
-        "sub": valid_user_id,  # ✅ Now guaranteed to be a valid UUID string
+        "sub": valid_user_id, 
         "roles": ["investigator"],
         "iat": now,
         "exp": now + 900,  # 15 minute expiry
