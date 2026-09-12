@@ -46,6 +46,7 @@ from schemas import (
     AuditLogResponse,
     DocumentMetadataUpdate,
     ShareDocumentRequest,
+    DocumentVersionResponse,
 )
 from security.auth import AuthenticatedUser, verify_jwt
 from security.rbac import require_upload_permission
@@ -592,3 +593,131 @@ async def get_secure_download_url(
         presigned_url=presigned_url,
         expires_in_seconds=300
     )
+# versioning
+@router.post(
+    "/{document_id}/version",
+    response_model=DocumentVersionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+@limiter.limit(settings.RATE_LIMIT_UPLOAD)
+async def create_document_version(
+    document_id: uuid.UUID,
+    request: Request,
+    file: UploadFile = File(...),
+    reason: Optional[str] = Form(None),
+    user: AuthenticatedUser = Depends(verify_jwt),
+    pool: asyncpg.Pool = Depends(get_pool),
+):
+    """
+    Uploads a new version of an existing document.
+    1. Checks if document is locked.
+    2. Runs security checks (MIME, AV).
+    3. Uploads new file to MinIO.
+    4. Inserts new version row and updates current_version.
+    5. Logs to chain_of_custody_logs.
+    """
+    async with pool.acquire() as conn:
+        # 1. Fetch document metadata
+        doc = await conn.fetchrow(
+            "SELECT id, case_id, current_version, is_locked FROM documents WHERE id = $1",
+            document_id
+        )
+        if not doc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+        
+        if doc["is_locked"]:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot version a locked document.")
+
+        # 2. RBAC Check (Reuse upload permission for versioning)
+        await require_upload_permission(user, doc["case_id"])
+
+        # 3. Security Pipeline (Streamlined)
+        quarantine_path = Path(settings.QUARANTINE_DIR) / f"{uuid.uuid4()}.part"
+        hasher = sha256()
+        bytes_written = 0
+
+        try:
+            # Write to quarantine and hash
+            async with aiofiles.open(quarantine_path, "wb") as out:
+                while chunk := await file.read(settings.UPLOAD_CHUNK_SIZE):
+                    bytes_written += len(chunk)
+                    if bytes_written > settings.MAX_FILE_SIZE_BYTES:
+                        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "File too large.")
+                    hasher.update(chunk)
+                    await out.write(chunk)
+
+            file_hash = hasher.hexdigest()
+            
+            # MIME & AV Check
+            true_mime = detect_true_mime(str(quarantine_path))
+            assert_allowed_mime(true_mime)
+            
+            if settings.ENABLE_AV_SCAN:
+                scan_result = await scan_file(str(quarantine_path))
+                if scan_result.infected:
+                    raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "File failed security scan.")
+
+            # 4. Upload to MinIO
+            new_version_num = doc["current_version"] + 1
+            ext = extension_for_mime(true_mime)
+            storage_key = f"case_{doc['case_id']}/{document_id}_v{new_version_num}.{ext}"
+            
+            await upload_file(str(quarantine_path), storage_key, true_mime)
+
+            # 5. Atomic DB Update
+            async with conn.transaction():
+                # Get user department for audit
+                user_dept = await conn.fetchval(
+                    "SELECT department_id FROM user_departments WHERE user_id = $1 AND is_primary = TRUE", user.id
+                )
+
+                # Insert new version
+                version_id = await conn.fetchval(
+                    """
+                    INSERT INTO document_versions 
+                    (id, document_id, version_number, storage_uri, file_size_bytes, file_mime_type, sha256_checksum, kms_key_id, uploaded_by, uploaded_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) RETURNING id
+                    """,
+                    uuid.uuid4(), document_id, new_version_num, storage_key, bytes_written, true_mime, file_hash, None, user.id
+                )
+
+                # Update main document record
+                await conn.execute(
+                    "UPDATE documents SET current_version = $1 WHERE id = $2",
+                    new_version_num, document_id
+                )
+
+                # Audit Log
+                entry_hash = await write_audit_entry(
+                    conn=conn,
+                    case_id=doc["case_id"],
+                    document_id=document_id,
+                    evidence_id=None,
+                    actor_id=user.id,
+                    actor_department_id=user_dept,
+                    action="DOCUMENT_VERSIONED",
+                    ip_address=extract_client_ip(request),
+                    user_agent=request.headers.get("User-Agent"),
+                    details={
+                        "new_version": new_version_num,
+                        "reason": reason,
+                        "sha256": file_hash,
+                        "version_id": str(version_id)
+                    }
+                )
+
+            return DocumentVersionResponse(
+                document_id=document_id,
+                new_version_number=new_version_num,
+                sha256=file_hash,
+                audit_entry_hash=entry_hash,
+            )
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            _log_security_event("VERSION_FAILURE", user.id, str(e))
+            raise HTTPException(status_code=500, detail="Versioning failed.")
+        finally:
+            if quarantine_path.exists():
+                quarantine_path.unlink(missing_ok=True)

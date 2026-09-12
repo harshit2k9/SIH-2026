@@ -80,3 +80,10 @@ class ShareDocumentRequest(BaseModel):
     access_level: str = Field(..., pattern="^(read|write|admin)$")
     reason: str
     expires_in_days: int = Field(default=30, ge=1, le=365)
+
+#----versioning
+class DocumentVersionResponse(BaseModel):
+    document_id: UUID
+    new_version_number: int
+    sha256: str
+    audit_entry_hash: str
