@@ -71,6 +71,7 @@ def main():
 
     with open(PRIVATE_KEY_PATH, "r") as f:
         private_key = f.read()
+    USER_ID = "20000000-0000-0000-0000-000000000001" 
 
     now = int(time.time())
     payload = {
