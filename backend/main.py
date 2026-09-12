@@ -4,23 +4,31 @@ import re
 import secrets
 import time
 import uuid
-
+import logging
+import warnings
+from pathlib import Path
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
+from pydantic import BaseModel
+
 
 import bcrypt
-from database import SessionLocal, engine
+import jwt
 import easyocr
-from fastapi import APIRouter, Depends,HTTPException, FastAPI, File, Form, Request, UploadFile
+from fastapi import APIRouter, Depends,HTTPException, FastAPI, File, Form, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-import logging
+
 
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from sqlalchemy.orm import Session
 
-from database import close_db_pool, init_db_pool
+from database import SessionLocal, engine
+from database import close_db_pool, init_db_pool, SessionLocal
+from config import settings
 from routers.documents import limiter, router as documents_router
 from services.storage import ensure_bucket
 
@@ -33,7 +41,6 @@ from services.mfa import (
     generate_mfa_secret,
     verify_totp,
 )
-from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 
 
@@ -60,6 +67,43 @@ for folder in [
     folder.mkdir(exist_ok=True)
 
 
+
+
+# ============================================================
+# DATABASE
+# ============================================================
+#Base.metadata.create_all(bind=engine)
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+def get_user_by_uid(db: Session, user_uid: str):
+    return db.query(User).filter(User.user_uid == user_uid).first()
+
+def get_user_by_email(db: Session, email: str):
+    return db.query(User).filter(User.email == email).first()
+
+#================
+#LIFESPAN
+#+===================
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info("Initializing database pool and storage...")
+    await init_db_pool()
+    await ensure_bucket()
+    yield
+    # Shutdown
+    logger.info("Shutting down, closing database pool...")
+    await close_db_pool()
+
+
 # ============================================================
 # SESSION COOKIE
 # ============================================================
@@ -76,19 +120,8 @@ if not SESSION_SECRET:
     )
     SESSION_SECRET = secrets.token_hex(32)
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup
-    logger.info("Initializing database pool and storage...")
-    await init_db_pool()
-    await ensure_bucket()
-    yield
-    # Shutdown
-    logger.info("Shutting down, closing database pool...")
-    await close_db_pool()
-
 #------session id and token transfer---------
-router = APIRouter()
+auth_router = APIRouter()
 
 
 class TokenRequest(BaseModel):
@@ -100,7 +133,7 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     expires_in: int
 
-@router.post("/api/auth/token", response_model=TokenResponse)
+@auth_router.post("/api/auth/token", response_model=TokenResponse)
 async def get_access_token(
     request: Request,
     db: Session = Depends(get_db)
@@ -138,6 +171,7 @@ async def get_access_token(
     
     # 4. Get user's department (needed for RBAC)
     # You'll need to add this query to fetch department_id
+
     department_result = await db.execute(
         """
         SELECT department_id 
@@ -163,7 +197,8 @@ async def get_access_token(
     }
     
     # 6. Sign with private key
-    with open(settings.JWT_PRIVATE_KEY_PATH, "r") as f:
+    key_path = os.getenv("JWT_PRIVATE_KEY_PATH", "keys/private.pem")
+    with open(key_path, "r") as f:
         private_key = f.read()
     
     access_token = jwt.encode(payload, private_key, algorithm="RS256")
@@ -319,20 +354,6 @@ def is_valid_aadhaar_document(image_bytes: bytes) -> bool:
     except Exception as e:
         print("DOCUMENT VALIDATION ERROR:", repr(e))
         return False
-
-
-# ============================================================
-# DATABASE
-# ============================================================
-#Base.metadata.create_all(bind=engine)
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 
