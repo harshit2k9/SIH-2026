@@ -63,9 +63,6 @@ for folder in [
 # ============================================================
 # SESSION COOKIE
 # ============================================================
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
 """SESSION_SECRET = os.getenv(
     "SIH26_SESSION_SECRET",
     "DEV-ONLY-CHANGE-THIS-BEFORE-PRODUCTION-" + secrets.token_hex(32),
@@ -90,6 +87,92 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down, closing database pool...")
     await close_db_pool()
 
+#------session id and token transfer---------
+router = APIRouter()
+
+
+class TokenRequest(BaseModel):
+    # The frontend will send the session cookie automatically
+    pass
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+
+@router.post("/api/auth/token", response_model=TokenResponse)
+async def get_access_token(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """
+    Exchange session cookie for JWT access token.
+    
+    This endpoint validates the user's session (from login) and returns
+    a JWT token that can be used for API authentication.
+    """
+    # 1. Get user from session (set during HTML login)
+    authenticated = request.session.get("authenticated")
+    user_uid = request.session.get("user_uid")
+    
+    if not authenticated or not user_uid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated. Please login first."
+        )
+    
+    # 2. Fetch user from database
+    user = get_user_by_uid(db, user_uid)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # 3. Verify user is active and MFA-enabled
+    if user.registration_status != "ACTIVE" or not user.mfa_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account not fully activated"
+        )
+    
+    # 4. Get user's department (needed for RBAC)
+    # You'll need to add this query to fetch department_id
+    department_result = await db.execute(
+        """
+        SELECT department_id 
+        FROM user_departments 
+        WHERE user_id = $1 AND is_primary = TRUE
+        """,
+        user.id
+    )
+    department_id = department_result.fetchone().department_id if department_result else None
+    
+    # 5. Generate JWT token
+    now = datetime.utcnow()
+    payload = {
+        "sub": str(user.id),                    # User UUID as string
+        "email": user.email,
+        "roles": ["investigator"],              # Fetch from user_departments.role_id
+        "department_id": str(department_id) if department_id else None,
+        "iat": now,
+        "exp": now + timedelta(minutes=30),     # 30 minute expiry
+        "jti": str(uuid.uuid4()),               # Unique token ID
+        "aud": settings.JWT_AUDIENCE,
+        "iss": settings.JWT_ISSUER,
+    }
+    
+    # 6. Sign with private key
+    with open(settings.JWT_PRIVATE_KEY_PATH, "r") as f:
+        private_key = f.read()
+    
+    access_token = jwt.encode(payload, private_key, algorithm="RS256")
+    
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        expires_in=1800  # 30 minutes
+    )
 # ============================================================
 # FASTAPI APP
 # ============================================================
@@ -100,9 +183,23 @@ app = FastAPI(
 )
 app = FastAPI(lifespan=lifespan)
 
+# ============================================================
+# TEMPLATES / STATIC/routing
+# ============================================================
 
 app.include_router(documents_router)
-app.include_router(router)
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+app.include_router(auth_router)
+
+# ===========================================================
+#limiters
+#===========================================================
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
 # ============================================================
 # MIDDLEWARE
 # ============================================================
@@ -238,11 +335,6 @@ def get_db():
         db.close()
 
 
-# ============================================================
-# TEMPLATES / STATIC
-# ============================================================
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # ============================================================
 # LIVENESS SESSION STORAGE
@@ -895,90 +987,3 @@ def logout(request: Request):
     request.session.clear()
     return RedirectResponse(url="/login", status_code=303)
 
-
-#------session id and token transfer---------
-router = APIRouter()
-
-
-class TokenRequest(BaseModel):
-    # The frontend will send the session cookie automatically
-    pass
-
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    expires_in: int
-
-@router.post("/api/auth/token", response_model=TokenResponse)
-async def get_access_token(
-    request: Request,
-    db: Session = Depends(get_db)
-):
-    """
-    Exchange session cookie for JWT access token.
-    
-    This endpoint validates the user's session (from login) and returns
-    a JWT token that can be used for API authentication.
-    """
-    # 1. Get user from session (set during HTML login)
-    authenticated = request.session.get("authenticated")
-    user_uid = request.session.get("user_uid")
-    
-    if not authenticated or not user_uid:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated. Please login first."
-        )
-    
-    # 2. Fetch user from database
-    user = get_user_by_uid(db, user_uid)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-    
-    # 3. Verify user is active and MFA-enabled
-    if user.registration_status != "ACTIVE" or not user.mfa_enabled:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account not fully activated"
-        )
-    
-    # 4. Get user's department (needed for RBAC)
-    # You'll need to add this query to fetch department_id
-    department_result = await db.execute(
-        """
-        SELECT department_id 
-        FROM user_departments 
-        WHERE user_id = $1 AND is_primary = TRUE
-        """,
-        user.id
-    )
-    department_id = department_result.fetchone().department_id if department_result else None
-    
-    # 5. Generate JWT token
-    now = datetime.utcnow()
-    payload = {
-        "sub": str(user.id),                    # User UUID as string
-        "email": user.email,
-        "roles": ["investigator"],              # Fetch from user_departments.role_id
-        "department_id": str(department_id) if department_id else None,
-        "iat": now,
-        "exp": now + timedelta(minutes=30),     # 30 minute expiry
-        "jti": str(uuid.uuid4()),               # Unique token ID
-        "aud": settings.JWT_AUDIENCE,
-        "iss": settings.JWT_ISSUER,
-    }
-    
-    # 6. Sign with private key
-    with open(settings.JWT_PRIVATE_KEY_PATH, "r") as f:
-        private_key = f.read()
-    
-    access_token = jwt.encode(payload, private_key, algorithm="RS256")
-    
-    return TokenResponse(
-        access_token=access_token,
-        token_type="bearer",
-        expires_in=1800  # 30 minutes
-    )

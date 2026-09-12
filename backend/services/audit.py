@@ -9,7 +9,6 @@ row with no corresponding audit trail, or vice versa.
 """
 import hashlib
 import json
-from tkinter import INSERT
 import uuid
 from datetime import datetime, timezone
 from typing import Any
