@@ -29,6 +29,7 @@ import uuid
 from hashlib import sha256
 from pathlib import Path
 from typing import Optional
+from datetime import datetime, timezone, timedelta
 
 import aiofiles
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status, Query
@@ -42,6 +43,9 @@ from schemas import (
     PaginatedDocumentsResponse,
     DocumentDownloadResponse,
     DocumentResponse,
+    AuditLogResponse,
+    DocumentMetadataUpdate,
+    ShareDocumentRequest,
 )
 from security.auth import AuthenticatedUser, verify_jwt
 from security.rbac import require_upload_permission
@@ -60,10 +64,10 @@ limiter = Limiter(key_func=get_remote_address)
 Path(settings.QUARANTINE_DIR).mkdir(parents=True, exist_ok=True)
 
 # Dedicated error log file — guarantees the full traceback lands somewhere
-# findable, regardless of terminal scrollback or logging config quirks.
 ERROR_LOG_PATH = Path(__file__).resolve().parent.parent.parent / "upload_errors.log"
 
-ALLOWED_DOC_TYPES = {"FIR", "ChargeSheet", "Evidence", "Forensic Report", "Witness Statement", "Legal Notice", "Other"}
+ALLOWED_DOC_TYPES = {"FIR", "ChargeSheet", "Evidence", "Forensic Report", "Witness Statement", "Legal Notice", "Judgment", "Other"}
+
 def _log_full_traceback(context: str) -> None:
     tb_text = traceback.format_exc()
     with open(ERROR_LOG_PATH, "a", encoding="utf-8") as f:
@@ -97,19 +101,14 @@ async def upload_document(
     file: UploadFile = File(...),
     user: AuthenticatedUser = Depends(verify_jwt),
 ):
-    document_type: str = Form(...),
-    confidentiality_level: int = Form(default=1),
-
-     # 1. Validate Document Type
-    """if document_type not in ALLOWED_DOC_TYPES:
+    # 1. Validate Document Type
+    doc_type_clean = document_type.strip()
+    if doc_type_clean not in ALLOWED_DOC_TYPES:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Invalid document_type. Must be one of: {', '.join(ALLOWED_DOC_TYPES)}"
-        )"""
-    if document_type not in ALLOWED_DOC_TYPES:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Invalid document type.")
-    elif document_type == "Other" and not document_number: # or a new 'remarks' field
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A description is required for 'Other' document types.")
+        )
+    
     # 2. Validate Confidentiality Level (e.g., 1 to 5)
     if not (1 <= confidentiality_level <= 5):
         raise HTTPException(
@@ -174,18 +173,33 @@ async def upload_document(
         try:
             async with pool.acquire() as conn:
                 async with conn.transaction():
+                    # Get user's department ID (needed for audit log)
+                    user_dept = await conn.fetchval(
+                        """
+                        SELECT department_id 
+                        FROM user_departments 
+                        WHERE user_id = $1 AND is_primary = TRUE
+                        """,
+                        user.id
+                    )
+                    
+                    if not user_dept:
+                        raise HTTPException(
+                            status.HTTP_400_BAD_REQUEST, 
+                            "User has no department assigned. Cannot proceed."
+                        )
+
                     # Insert into documents table (metadata)
-                    document_id = await conn.fetchval(
+                    await conn.execute(
                         """
                         INSERT INTO documents
                             (id, case_id, evidence_item_id, document_number, title,
                              document_type, confidentiality_level, current_version,
                              created_by, created_at, is_locked)
                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), false)
-                        RETURNING id
                         """,
                         document_uuid, case_id, evidence_item_id, document_number, title,
-                        document_type, confidentiality_level, 1, user.id,
+                        doc_type_clean, confidentiality_level, 1, user.id,
                     )
 
                     # Insert into document_versions table (file storage details)
@@ -193,28 +207,34 @@ async def upload_document(
                         """
                         INSERT INTO document_versions
                             (id, document_id, version_number, storage_uri, file_size_bytes,
-                             file_mime_type, sha256_checksum,kms_key_id, uploaded_by, uploaded_at)
+                             file_mime_type, sha256_checksum, kms_key_id, uploaded_by, uploaded_at)
                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
                         RETURNING id
                         """,
-                        uuid.uuid4(), document_id, 1, storage_key, bytes_written,
-                        true_mime, file_hash, kms_key_id, user.id,
+                        uuid.uuid4(), document_uuid, 1, storage_key, bytes_written,
+                        true_mime, file_hash, None, user.id,  # kms_key_id is None for now
                     )
 
                     # Write hash-chained audit entry with complete version tracking
                     entry_hash = await write_audit_entry(
-                        conn,
-                        document_id=document_id,
+                        conn=conn,
+                        case_id=case_id,
+                        document_id=document_uuid,
+                        evidence_id=evidence_item_id,
                         actor_id=user.id,
-                        action="UPLOAD",
+                        actor_department_id=user_dept,
+                        action="DOCUMENT_UPLOADED",
+                        ip_address=extract_client_ip(request),
+                        user_agent=request.headers.get("User-Agent"),
                         details={
                             "sha256": file_hash,
                             "size_bytes": bytes_written,
                             "mime": true_mime,
                             "version_id": str(version_id),
                             "version_number": 1,
-                            "storage_key": storage_key
-                        },
+                            "storage_key": storage_key,
+                            "filename": safe_filename
+                        }
                     )
         except Exception as db_exc:
             # DB write failed after object storage succeeded -> roll back storage too
@@ -223,7 +243,7 @@ async def upload_document(
             raise
 
         return DocumentUploadResponse(
-            document_id=document_id,
+            document_id=document_uuid,
             sha256=file_hash,
             status="active",
             audit_entry_hash=entry_hash,
@@ -241,35 +261,53 @@ async def upload_document(
             quarantine_path.unlink(missing_ok=True)
 
 
+# ============================================================
+# 1. ENHANCED LIST: Fetch documents for a case with Pagination
+# ============================================================
 @router.get("/case/{case_id}", response_model=PaginatedDocumentsResponse, summary="List case documents")
 async def list_case_documents(
     case_id: uuid.UUID,
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
+    doc_type: Optional[str] = Query(None, description="Filter by document type"),
     db_pool: asyncpg.Pool = Depends(get_pool),
     user: AuthenticatedUser = Depends(verify_jwt),
 ):
+    """
+    Data Flow: DB -> API -> Frontend
+    Fetches documents for a specific case, joining with the latest version metadata.
+    """
     offset = (page - 1) * limit
+    
+    # Build query dynamically based on filters
+    query = """
+        SELECT d.id, d.case_id, d.title, d.document_type, d.document_number,
+               dv.file_size_bytes, dv.sha256_checksum, d.created_by, d.created_at,
+               d.current_version, d.confidentiality_level, d.is_locked
+        FROM documents d
+        LEFT JOIN document_versions dv ON d.id = dv.document_id 
+            AND dv.version_number = d.current_version
+        WHERE d.case_id = $1
+    """
+    params = [case_id]
+    param_idx = 2
+    
+    if doc_type:
+        query += f" AND d.document_type = ${param_idx}"
+        params.append(doc_type)
+        param_idx += 1
+        
+    query += f" ORDER BY d.created_at DESC LIMIT ${param_idx} OFFSET ${param_idx + 1}"
+    params.extend([limit, offset])
+    
     async with db_pool.acquire() as conn:
-        total = await conn.fetchval(
-            "SELECT COUNT(*) FROM documents WHERE case_id = $1",
-            case_id
-        )
-        records = await conn.fetch(
-            """
-            SELECT d.id, d.case_id, d.title, d.document_type, d.document_number,
-                   dv.file_size_bytes, dv.sha256_checksum, d.created_by, d.created_at,
-                   d.current_version, d.confidentiality_level
-            FROM documents d
-            JOIN document_versions dv ON d.id = dv.document_id
-                AND dv.version_number = d.current_version
-            WHERE d.case_id = $1
-            ORDER BY d.created_at DESC
-            LIMIT $2 OFFSET $3
-            """,
-            case_id, limit, offset
-        )
-
+        # Get total count
+        count_query = "SELECT COUNT(*) FROM documents WHERE case_id = $1"
+        total = await conn.fetchval(count_query, case_id)
+        
+        # Fetch records
+        records = await conn.fetch(query, *params)
+        
     return PaginatedDocumentsResponse(
         total=total,
         page=page,
@@ -278,18 +316,22 @@ async def list_case_documents(
     )
 
 
+# ============================================================
+# 2. GET SINGLE DOCUMENT
+# ============================================================
 @router.get("/{document_id}", response_model=DocumentResponse, summary="Get single document metadata")
 async def get_document_by_id(
     document_id: uuid.UUID,
     db_pool: asyncpg.Pool = Depends(get_pool),
     user: AuthenticatedUser = Depends(verify_jwt),
 ):
+    """Fetch complete metadata for a single document."""
     async with db_pool.acquire() as conn:
         record = await conn.fetchrow(
             """
             SELECT d.id, d.case_id, d.title, d.document_type, d.document_number,
                    dv.file_size_bytes, dv.sha256_checksum, d.created_by, d.created_at,
-                   d.current_version, d.confidentiality_level
+                   d.current_version, d.confidentiality_level, d.is_locked
             FROM documents d
             JOIN document_versions dv ON d.id = dv.document_id
                 AND dv.version_number = d.current_version
@@ -302,6 +344,202 @@ async def get_document_by_id(
     return DocumentResponse(**dict(record))
 
 
+# ============================================================
+# 3. AUDIT TRAIL: Fetch Immutable Chain of Custody
+# ============================================================
+@router.get("/{document_id}/audit", response_model=list[AuditLogResponse], summary="Get document audit trail")
+async def get_document_audit_trail(
+    document_id: uuid.UUID,
+    db_pool: asyncpg.Pool = Depends(get_pool),
+    user: AuthenticatedUser = Depends(verify_jwt),
+):
+    """
+    Data Flow: DB -> API -> Frontend
+    CRITICAL FOR LEGAL VALIDITY: Returns the hash-chained history of the document.
+    """
+    async with db_pool.acquire() as conn:
+        # First, verify user has access to this document's case
+        doc = await conn.fetchrow("SELECT case_id FROM documents WHERE id = $1", document_id)
+        if not doc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+            
+        # TODO: Add RBAC check - await require_case_access(user, doc['case_id'])
+        
+        # Fetch audit logs ordered by time (newest first)
+        logs = await conn.fetch(
+            """
+            SELECT id, case_id, document_id, evidence_id, actor_id, actor_department_id,
+                   action, ip_address, user_agent, previous_log_hash, current_log_hash, created_at
+            FROM chain_of_custody_logs
+            WHERE document_id = $1
+            ORDER BY created_at DESC
+            """,
+            document_id
+        )
+        
+    return [AuditLogResponse(**dict(row)) for row in logs]
+
+
+# ============================================================
+# 4. UPDATE METADATA: Securely modify document properties
+# ============================================================
+@router.patch("/{document_id}", status_code=status.HTTP_200_OK, summary="Update document metadata")
+async def update_document_metadata(
+    document_id: uuid.UUID,
+    updates: DocumentMetadataUpdate,
+    request: Request,
+    db_pool: asyncpg.Pool = Depends(get_pool),
+    user: AuthenticatedUser = Depends(verify_jwt),
+):
+    """
+    Data Flow: Frontend -> API -> DB + Audit Log
+    Updates metadata and IMMUTABLY logs the change in the chain of custody.
+    """
+    update_fields = []
+    params = []
+    param_idx = 1
+    
+    if updates.title is not None:
+        update_fields.append(f"title = ${param_idx}")
+        params.append(updates.title)
+        param_idx += 1
+        
+    if updates.confidentiality_level is not None:
+        if not (1 <= updates.confidentiality_level <= 5):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="confidentiality_level must be between 1 and 5."
+            )
+        update_fields.append(f"confidentiality_level = ${param_idx}")
+        params.append(updates.confidentiality_level)
+        param_idx += 1
+        
+    if updates.is_locked is not None:
+        update_fields.append(f"is_locked = ${param_idx}")
+        params.append(updates.is_locked)
+        param_idx += 1
+        
+    if not update_fields:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No valid fields to update")
+        
+    params.append(document_id)
+    
+    query = f"""
+        UPDATE documents 
+        SET {', '.join(update_fields)} 
+        WHERE id = ${param_idx}
+        RETURNING case_id
+    """
+    
+    async with db_pool.acquire() as conn:
+        async with conn.transaction():
+            result = await conn.fetchrow(query, *params)
+            if not result:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+                
+            case_id = result['case_id']
+            
+            # Get user's department
+            user_dept = await conn.fetchval(
+                "SELECT department_id FROM user_departments WHERE user_id = $1 AND is_primary = TRUE",
+                user.id
+            )
+            
+            # CRITICAL: Write to immutable audit log
+            await write_audit_entry(
+                conn=conn,
+                case_id=case_id,
+                document_id=document_id,
+                evidence_id=None,
+                actor_id=user.id,
+                actor_department_id=user_dept,
+                action="METADATA_UPDATED",
+                ip_address=extract_client_ip(request),
+                user_agent=request.headers.get("User-Agent"),
+                details={"changes": updates.dict(exclude_none=True)}
+            )
+            
+    return {"message": "Document metadata updated and audit log secured."}
+
+
+# ============================================================
+# 5. INTER-DEPARTMENT SHARE: Collaborative Data Movement
+# ============================================================
+@router.post("/{document_id}/share", status_code=status.HTTP_201_CREATED, summary="Share document with department")
+async def share_document_with_department(
+    document_id: uuid.UUID,
+    share_req: ShareDocumentRequest,
+    request: Request,
+    db_pool: asyncpg.Pool = Depends(get_pool),
+    user: AuthenticatedUser = Depends(verify_jwt),
+):
+    """
+    Data Flow: Frontend -> API -> DB (inter_department_shares)
+    Grants another department access to this document.
+    """
+    async with db_pool.acquire() as conn:
+        async with conn.transaction():
+            # 1. Get document details
+            doc = await conn.fetchrow(
+                "SELECT case_id, created_by FROM documents WHERE id = $1", 
+                document_id
+            )
+            if not doc:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+                
+            # 2. Get user's department (source)
+            source_dept = await conn.fetchval(
+                "SELECT department_id FROM user_departments WHERE user_id = $1 AND is_primary = TRUE",
+                user.id
+            )
+            
+            if not source_dept:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, 
+                    detail="User has no department assigned."
+                )
+            
+            # 3. Insert share record
+            share_id = uuid.uuid4()
+            valid_from = datetime.now(timezone.utc)
+            expires_at = valid_from + timedelta(days=share_req.expires_in_days)
+            
+            await conn.execute(
+                """
+                INSERT INTO inter_department_shares 
+                (id, document_id, source_department_id, target_department_id, 
+                 granted_by_user_id, access_level, reason, valid_from, expires_at, status)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')
+                """,
+                share_id, document_id, source_dept, share_req.target_department_id,
+                user.id, share_req.access_level, share_req.reason, valid_from, expires_at
+            )
+            
+            # 4. Audit the share action
+            await write_audit_entry(
+                conn=conn,
+                case_id=doc['case_id'],
+                document_id=document_id,
+                evidence_id=None,
+                actor_id=user.id,
+                actor_department_id=source_dept,
+                action="DOCUMENT_SHARED",
+                ip_address=extract_client_ip(request),
+                user_agent=request.headers.get("User-Agent"),
+                details={
+                    "target_department_id": str(share_req.target_department_id),
+                    "access_level": share_req.access_level,
+                    "expires_at": expires_at.isoformat(),
+                    "reason": share_req.reason
+                }
+            )
+            
+    return {"message": "Document shared successfully", "share_id": str(share_id)}
+
+
+# ============================================================
+# 6. SECURE DOWNLOAD (Already implemented - kept for reference)
+# ============================================================
 @router.get("/{document_id}/download", response_model=DocumentDownloadResponse, summary="Get access URL & log audit")
 async def get_secure_download_url(
     document_id: uuid.UUID,
@@ -309,6 +547,7 @@ async def get_secure_download_url(
     db_pool: asyncpg.Pool = Depends(get_pool),
     user: AuthenticatedUser = Depends(verify_jwt),
 ):
+    """Generate presigned download URL and log the access."""
     async with db_pool.acquire() as conn:
         # Get the latest version's storage key
         record = await conn.fetchrow(
@@ -324,12 +563,22 @@ async def get_secure_download_url(
         if not record:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
+        # Get user's department
+        user_dept = await conn.fetchval(
+            "SELECT department_id FROM user_departments WHERE user_id = $1 AND is_primary = TRUE",
+            user.id
+        )
+
         await log_audit_event(
             conn=conn,
+            case_id=record['case_id'],
             document_id=document_id,
-            user_id=user.id,
+            actor_id=user.id,
+            actor_department_id=user_dept,
             action="PRESIGNED_URL_GENERATED",
-            ip_address=extract_client_ip(request)
+            ip_address=extract_client_ip(request),
+            user_agent=request.headers.get("User-Agent"),
+            extra_details={"download_initiated": True}
         )
 
     presigned_url = await generate_presigned_download_url(

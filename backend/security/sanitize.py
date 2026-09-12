@@ -9,7 +9,7 @@ Never trust client-supplied filenames or Content-Type headers.
 import re
 
 import magic
-
+from fastapi import HTTPException, status
 from config import settings
 
 _SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._\- ]")
@@ -30,7 +30,6 @@ def detect_true_mime(file_path: str) -> str:
 
 def assert_allowed_mime(mime: str) -> None:
     if mime not in settings.ALLOWED_MIME_TYPES:
-        from fastapi import HTTPException, status
         raise HTTPException(
             status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             f"File type '{mime}' is not permitted.",
