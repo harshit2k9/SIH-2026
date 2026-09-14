@@ -3,6 +3,7 @@ FROM python:3.11-slim
 # Install system libraries and build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    curl \
     libgl1 \
     libegl1 \
     libgles2 \
