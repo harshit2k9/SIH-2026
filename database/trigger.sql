@@ -3,34 +3,31 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE OR REPLACE FUNCTION process_secure_audit_trail()
 RETURNS TRIGGER AS $$
 DECLARE
-    v_prev_hash VARCHAR(64);
-    v_current_hash VARCHAR(64);
+    v_prev_hash CHAR(64);
+    v_current_hash CHAR(64);
 BEGIN
-    -- Get the last current_log_hash from chain_of_custody_logs
-    SELECT current_log_hash INTO v_prev_hash 
+    SELECT current_hash INTO v_prev_hash 
     FROM chain_of_custody_logs 
-    ORDER BY created_at DESC, id DESC 
+    ORDER BY id DESC 
     LIMIT 1;
 
     IF v_prev_hash IS NULL THEN
         v_prev_hash := '0000000000000000000000000000000000000000000000000000000000000000';
     END IF;
 
-    -- Compute SHA-256 hash
     v_current_hash := encode(
         digest(
-            COALESCE(v_prev_hash, '') || 
-            NEW.action || 
-            NEW.actor_id::text || 
-            NEW.case_id::text || 
-            COALESCE(NEW.created_at::text, now()::text), 
+            v_prev_hash || 
+            NEW.event_type || 
+            COALESCE(NEW.user_id::text, '') || 
+            COALESCE(NEW.event_timestamp::text, now()::text), 
             'sha256'
         ), 
         'hex'
     );
 
-    NEW.previous_log_hash := v_prev_hash;
-    NEW.current_log_hash := v_current_hash;
+    NEW.previous_hash := v_prev_hash;
+    NEW.current_hash := v_current_hash;
 
     RETURN NEW;
 END;
