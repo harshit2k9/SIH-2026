@@ -1,0 +1,29 @@
+docker exec -it sddms_postgres psql -U admin -d app_db -c "ALTER TABLE documents ALTER COLUMN document_number DROP NOT NULL;"
+dropped the document number not null as it is auto generate but didnt chnaged the schema
+
+
+to chnage 
+
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
+to deployemnt environement as local host isnt safe
+
+{
+# In .env file for production:
+CORS_ORIGINS=https://yourdomain.com,https://app.yourdomain.com
+
+# In main.py - remove localhost fallback:
+CORS_ORIGINS = os.getenv("CORS_ORIGINS")
+if not CORS_ORIGINS:
+    raise ValueError("CORS_ORIGINS must be set in environment variables")
+
+cors_origins = [origin.strip() for origin in CORS_ORIGINS.split(",")]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,  # No localhost in production!
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
+    expose_headers=["Content-Length", "X-Request-ID"],
+)
+}

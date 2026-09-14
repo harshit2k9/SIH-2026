@@ -10,7 +10,7 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pydantic import BaseModel
-
+import asyncio
 
 import bcrypt
 import jwt
@@ -25,8 +25,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy.orm import Session
-
-from database import close_db_pool, init_db_pool, SessionLocal, engine
+from sqlalchemy import text
+from database import close_db_pool, init_db_pool, SessionLocal, engine, get_pool
 from config import settings
 from routers.documents import limiter, router as documents_router
 from services.storage import ensure_bucket
@@ -41,7 +41,12 @@ from services.mfa import (
     verify_totp,
 )
 from starlette.middleware.sessions import SessionMiddleware
+from security.auth import AuthenticatedUser, verify_jwt
 
+from pathlib import Path
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.backends import default_backend
 
 # ============================================================
 # PATHS
@@ -86,6 +91,150 @@ def get_user_by_uid(db: Session, user_uid: str):
 
 def get_user_by_email(db: Session, email: str):
     return db.query(User).filter(User.email == email).first()
+
+
+def create_user_mapping(db: Session, registration_user_id: int, operational_user_id: str):
+    """
+    Create mapping between registration user (Integer ID) and operational user (UUID).
+    This should be called after user completes registration and verification.
+    """
+
+    # Check if mapping already exists
+    existing = db.execute(
+        text("SELECT 1 FROM public.user_mapping WHERE registration_user_id = :reg_id"),
+        {"reg_id": registration_user_id}
+    ).fetchone()
+
+    if existing:
+        logger.warning(f"Mapping already exists for registration user {registration_user_id}")
+        return False
+
+    # Create the mapping
+    db.execute(
+        text("""
+            INSERT INTO public.user_mapping (registration_user_id, operational_user_id)
+            VALUES (:reg_id, :op_id)
+        """),
+        {"reg_id": registration_user_id, "op_id": operational_user_id}
+    )
+    db.commit()
+    logger.info(f"Created user mapping: registration {registration_user_id} -> operational {operational_user_id}")
+    return True
+
+
+async def provision_operational_user(db: Session, registration_user: User):
+    """
+    Automatically create operational user account after successful registration.
+    This bridges the registration system (Integer ID) with the operational system (UUID).
+
+    Args:
+        db: Database session
+        registration_user: The verified registration user
+
+    Returns:
+        str: The operational user UUID if successful, None if failed
+    """
+    from sqlalchemy import text
+    import uuid as uuid_lib
+
+    try:
+        # Check if operational user already exists for this registration user
+        existing_mapping = db.execute(
+            text("SELECT operational_user_id FROM public.user_mapping WHERE registration_user_id = :reg_id"),
+            {"reg_id": registration_user.id}
+        ).fetchone()
+
+        if existing_mapping:
+            logger.info(f"Operational user already exists for registration user {registration_user.id}")
+            return str(existing_mapping.operational_user_id)
+
+        # Generate new UUID for operational user
+        operational_user_id = str(uuid_lib.uuid4())
+
+        # Get default department and role (can be configured via environment variables)
+        default_department_id = os.getenv("DEFAULT_DEPARTMENT_ID")
+        default_role_id = os.getenv("DEFAULT_ROLE_ID")
+
+        # If not configured, try to get the first available department and role
+        if not default_department_id:
+            dept_result = db.execute(
+                text("SELECT id FROM public.departments LIMIT 1")
+            ).fetchone()
+            if dept_result:
+                default_department_id = str(dept_result.id)
+            else:
+                logger.error("No departments found in database. Cannot provision user.")
+                return None
+
+        if not default_role_id:
+            role_result = db.execute(
+                text("SELECT id FROM public.roles WHERE name = 'investigator' LIMIT 1")
+            ).fetchone()
+            if role_result:
+                default_role_id = str(role_result.id)
+            else:
+                # Fallback to first available role
+                role_result = db.execute(
+                    text("SELECT id FROM public.roles LIMIT 1")
+                ).fetchone()
+                if role_result:
+                    default_role_id = str(role_result.id)
+                else:
+                    logger.error("No roles found in database. Cannot provision user.")
+                    return None
+
+        # Create operational user
+        db.execute(
+            text("""
+                INSERT INTO public.users (id, full_name, email, badge_number, security_clearance_level, is_active, created_at)
+                VALUES (:id, :full_name, :email, :badge_number, :clearance_level, true, NOW())
+            """),
+            {
+                "id": operational_user_id,
+                "full_name": registration_user.full_name,
+                "email": registration_user.email,
+                "badge_number": f"REG-{registration_user.id:06d}",  # Auto-generate badge number
+                "clearance_level": 1,  # Default clearance level
+            }
+        )
+
+        # Assign user to department with role
+        db.execute(
+            text("""
+                INSERT INTO public.user_departments (id, user_id, department_id, role_id, is_primary, assigned_at)
+                VALUES (:id, :user_id, :dept_id, :role_id, true, NOW())
+            """),
+            {
+                "id": str(uuid_lib.uuid4()),
+                "user_id": operational_user_id,
+                "dept_id": default_department_id,
+                "role_id": default_role_id,
+            }
+        )
+
+        # Create mapping
+        db.execute(
+            text("""
+                INSERT INTO public.user_mapping (registration_user_id, operational_user_id)
+                VALUES (:reg_id, :op_id)
+            """),
+            {"reg_id": registration_user.id, "op_id": operational_user_id}
+        )
+
+        db.commit()
+
+        logger.info(
+            f"✅ Automated user provisioning successful: "
+            f"registration {registration_user.id} ({registration_user.email}) -> "
+            f"operational {operational_user_id}"
+        )
+
+        return operational_user_id
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Failed to provision operational user for registration {registration_user.id}: {e}")
+        return None
 
 #================
 #LIFESPAN
@@ -139,20 +288,20 @@ async def get_access_token(
 ):
     """
     Exchange session cookie for JWT access token.
-    
+
     This endpoint validates the user's session (from login) and returns
     a JWT token that can be used for API authentication.
     """
     # 1. Get user from session (set during HTML login)
     authenticated = request.session.get("authenticated")
     user_uid = request.session.get("user_uid")
-    
+
     if not authenticated or not user_uid:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated. Please login first."
         )
-    
+
     # 2. Fetch user from database
     user = get_user_by_uid(db, user_uid)
     if not user:
@@ -160,33 +309,55 @@ async def get_access_token(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
-    
+
     # 3. Verify user is active and MFA-enabled
     if user.registration_status != "ACTIVE" or not user.mfa_enabled:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account not fully activated"
         )
-    
-    # 4. Get user's department (needed for RBAC)
-    # You'll need to add this query to fetch department_id
 
-    department_result = await db.execute(
-        """
-        SELECT department_id 
-        FROM user_departments 
-        WHERE user_id = $1 AND is_primary = TRUE
-        """,
-        user.id
-    )
-    department_id = department_result.fetchone().department_id if department_result else None
+    # 4. Get operational user UUID from mapping table
     
-    # 5. Generate JWT token
+    mapping_result = db.execute(
+        text("""
+            SELECT operational_user_id
+            FROM public.user_mapping
+            WHERE registration_user_id = :reg_user_id
+        """),
+        {"reg_user_id": user.id}
+    )
+    mapping_row = mapping_result.fetchone()
+
+    if not mapping_row:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User not mapped to operational account. Contact administrator."
+        )
+
+    operational_user_id = mapping_row.operational_user_id
+
+    # 5. Get user's department and role from operational system
+
+    department_result = db.execute(
+        text("""
+            SELECT ud.department_id, r.name as role_name
+            FROM public.user_departments ud
+            JOIN public.roles r ON ud.role_id = r.id
+            WHERE ud.user_id = :user_id AND ud.is_primary = TRUE
+        """),
+        {"user_id": str(operational_user_id)}
+    )
+    department_row = department_result.fetchone()
+    department_id = department_row.department_id if department_row else None
+    role_name = department_row.role_name if department_row else "investigator"
+
+    # 6. Generate JWT token
     now = datetime.utcnow()
     payload = {
-        "sub": str(user.id),                    # User UUID as string
+        "sub": str(operational_user_id),                    # User UUID as string
         "email": user.email,
-        "roles": ["investigator"],              # Fetch from user_departments.role_id
+        "roles": [role_name],              # Fetch from user_departments.role_id
         "department_id": str(department_id) if department_id else None,
         "iat": now,
         "exp": now + timedelta(minutes=30),     # 30 minute expiry
@@ -194,14 +365,14 @@ async def get_access_token(
         "aud": settings.JWT_AUDIENCE,
         "iss": settings.JWT_ISSUER,
     }
-    
-    # 6. Sign with private key
+
+    # 7. Sign with private key
     key_path = os.getenv("JWT_PRIVATE_KEY_PATH", "keys/private.pem")
     with open(key_path, "r") as f:
         private_key = f.read()
-    
+
     access_token = jwt.encode(payload, private_key, algorithm="RS256")
-    
+
     return TokenResponse(
         access_token=access_token,
         token_type="bearer",
@@ -214,8 +385,9 @@ app = FastAPI(
     title="SIH26 Secure Document Management System",
     version="1.0.0",
     lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
-app = FastAPI(lifespan=lifespan)
 
 # ============================================================
 # TEMPLATES / STATIC/routing
@@ -253,14 +425,16 @@ if not SESSION_SECRET:
     )
     SESSION_SECRET = secrets.token_hex(32)
 
+
 app.add_middleware(
     SessionMiddleware,
     secret_key=SESSION_SECRET,
     session_cookie="sih26_session",
-    max_age=3600,
-    same_site="lax",
-    https_only=False,  # Set to True when deployed over HTTPS
+    max_age=1800,  # Reduced from 3600 to 30 minutes for security
+    same_site="strict",  # Changed from "lax" to "strict" for CSRF protection
+    https_only=os.getenv("ENVIRONMENT") == "production",  # Dynamic based on environment
 )
+
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
 
 # 3. CORS Middleware configuration
@@ -273,6 +447,58 @@ app.add_middleware(
     expose_headers=["Content-Length", "X-Request-ID"],
 )
 
+
+
+def ensure_jwt_keys_exist():
+    """Generate RSA key pair if they don't exist."""
+    private_key_path = Path(settings.JWT_PRIVATE_KEY_PATH)
+    public_key_path = Path(settings.JWT_PUBLIC_KEY_PATH)
+
+    if not private_key_path.exists() or not public_key_path.exists():
+        logger.info("🔑 Generating JWT key pair...")
+
+        # Create directory if needed
+        private_key_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Generate private key
+        private_key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=2048,
+            backend=default_backend()
+        )
+
+        # Serialize private key
+        pem_private = private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+
+        # Serialize public key
+        public_key = private_key.public_key()
+        pem_public = public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+
+        # Write keys with secure permissions
+        with open(private_key_path, "wb") as f:
+            f.write(pem_private)
+        private_key_path.chmod(0o600)  # Owner read/write only
+
+        with open(public_key_path, "wb") as f:
+            f.write(pem_public)
+        public_key_path.chmod(0o644)  # Owner read/write, others read
+
+        logger.info("✅ JWT keys generated successfully")
+    else:
+        logger.info("✅ Existing JWT keys loaded")
+
+# Call this BEFORE the lifespan context
+ensure_jwt_keys_exist()
+
+
+#----------------------------------------------------------------------
 # ============================================================
 # OCR & VERHOEFF VERIFICATION SETUP
 # ============================================================
@@ -310,16 +536,16 @@ VERHOEFF_P = [
 def validate_verhoeff(number_str: str) -> bool:
     if not number_str:
         return False
-        
+
     clean_num = str(number_str).strip().replace(" ", "").replace("-", "")
-    
+
     if not clean_num.isdigit() or len(clean_num) != 12 or clean_num[0] in ('0', '1'):
         return False
 
     c = 0
     for i, item in enumerate(reversed(clean_num)):
         c = VERHOEFF_D[c][VERHOEFF_P[i % 8][int(item)]]
-        
+
     return c == 0
 
 
@@ -437,13 +663,13 @@ def consume_login_challenge(token: str):
 # ============================================================
 # USER HELPERS
 # ============================================================
-def get_user_by_uid(db: Session, user_uid: str):
+"""def get_user_by_uid(db: Session, user_uid: str):
     return db.query(User).filter(User.user_uid == user_uid).first()
 
 
 def get_user_by_email(db: Session, email: str):
     return db.query(User).filter(User.email == email).first()
-
+"""
 
 # ============================================================
 # LOGIN PROTECTION
@@ -477,6 +703,55 @@ def home():
 @app.get("/health")
 def health():
     return {"status": "healthy"}
+
+
+@app.get("/health/db")
+async def health_db():
+    """Check database connectivity"""
+    try:
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            await conn.fetchval("SELECT 1")
+        return {"status": "healthy", "database": "connected"}
+    except Exception as e:
+        logger.error(f"Database health check failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Database unhealthy: {str(e)}"
+        )
+
+
+@app.get("/health/storage")
+async def health_storage():
+    """Check MinIO/S3 storage connectivity"""
+    try:
+        await ensure_bucket()
+        return {"status": "healthy", "storage": "connected"}
+    except Exception as e:
+        logger.error(f"Storage health check failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Storage unhealthy: {str(e)}"
+        )
+
+
+@app.get("/health/antivirus")
+async def health_antivirus():
+    """Check ClamAV connectivity"""
+    try:
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(settings.CLAMAV_HOST, settings.CLAMAV_PORT),
+            timeout=5.0
+        )
+        writer.close()
+        await writer.wait_closed()
+        return {"status": "healthy", "antivirus": "connected"}
+    except Exception as e:
+        logger.error(f"Antivirus health check failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Antivirus unhealthy: {str(e)}"
+        )
 
 
 # ============================================================
@@ -798,7 +1073,7 @@ def mfa_setup(user_uid: str, request: Request, db: Session = Depends(get_db)):
 
 
 @app.post("/mfa/verify", response_class=HTMLResponse)
-def verify_mfa(
+async def verify_mfa(
     request: Request,
     user_uid: str = Form(...),
     code: str = Form(...),
@@ -840,6 +1115,29 @@ def verify_mfa(
     db.commit()
     db.refresh(user)
 
+   
+# AUTOMATED USER PROVISIONING
+# Create operational user account and mapping automatically
+    operational_user_id = await provision_operational_user(db, user)
+
+    if not operational_user_id:
+        logger.error(f"Failed to provision operational user for {user.user_uid}")
+        return HTMLResponse(
+            """
+            <html>
+                <head><title>Provisioning Error</title></head>
+                <body>
+                    <h1>Account Setup Incomplete</h1>
+                    <p>Your registration was successful, but we encountered an error setting up your operational account.</p>
+                    <p>Please contact support with your User ID: <strong>{user_uid}</strong></p>
+                </body>
+            </html>
+            """,
+            status_code=500
+        )
+
+    logger.info(f"✅ User {user.user_uid} fully provisioned with operational ID: {operational_user_id}")
+
     return RedirectResponse(url="/login", status_code=303)
 
 
@@ -857,6 +1155,10 @@ def login_page(request: Request):
         context={"error": None},
     )
 
+
+# TODO: Create user mapping after operational user is provisioned
+# For now, mapping must be created manually by admin or through automated provisioning
+# Example: create_user_mapping(db, user.id, operational_user_uuid)
 
 @app.post("/login", response_class=HTMLResponse)
 def login_password(
@@ -1007,3 +1309,113 @@ def logout(request: Request):
     request.session.clear()
     return RedirectResponse(url="/login", status_code=303)
 
+
+# ============================================================
+# ADMIN: USER MAPPING MANAGEMENT
+# ============================================================
+
+async def require_admin(user: AuthenticatedUser = Depends(verify_jwt)):
+    """
+    Dependency that ensures the user has admin role.
+    Use this with Depends(require_admin) in admin endpoints.
+    """
+    if "admin" not in user.roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required. Your roles: " + ", ".join(user.roles)
+        )
+    return user
+
+
+
+@app.post("/admin/users/map")
+async def map_user_to_operational(
+    request: Request,
+    registration_user_id: int = Form(...),
+    operational_user_id: str = Form(...),  # UUID string
+    db: Session = Depends(get_db),
+    admin_user: AuthenticatedUser = Depends(require_admin),  # Admin authentication
+    ):
+    """
+    Admin endpoint to map a registration user to an operational user.
+    This creates the bridge between the two user systems.
+
+    Args:
+        registration_user_id: Integer ID from models.py User table
+        operational_user_id: UUID from public.users table
+    """
+    
+    # Verify registration user exists
+    reg_user = db.query(User).filter(User.id == registration_user_id).first()
+    if not reg_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Registration user {registration_user_id} not found"
+        )
+
+    # Verify operational user exists
+    op_user = db.execute(
+        text("SELECT id, email FROM public.users WHERE id = :user_id"),
+        {"user_id": operational_user_id}
+    ).fetchone()
+
+    if not op_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Operational user {operational_user_id} not found"
+        )
+
+    # Create the mapping
+    success = create_user_mapping(db, registration_user_id, operational_user_id)
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Mapping already exists for this registration user"
+        )
+
+    return {
+        "status": "success",
+        "message": f"User mapping created: registration {registration_user_id} ({reg_user.email}) -> operational {operational_user_id} ({op_user.email})"
+    }
+
+
+@app.get("/admin/users/mappings")
+async def list_user_mappings(
+    request: Request,
+    db: Session = Depends(get_db),
+    admin_user: AuthenticatedUser = Depends(require_admin),  # Admin authentication
+):
+    """
+    Admin endpoint to list all user mappings.
+    Authentication: Requires admin role
+    """
+
+
+    mappings = db.execute(
+        text("""
+            SELECT
+                um.registration_user_id,
+                u1.email as registration_email,
+                um.operational_user_id,
+                u2.email as operational_email,
+                um.mapped_at
+            FROM public.user_mapping um
+            JOIN users u1 ON um.registration_user_id = u1.id
+            JOIN public.users u2 ON um.operational_user_id = u2.id
+            ORDER BY um.mapped_at DESC
+        """)
+    ).fetchall()
+
+    return {
+        "mappings": [
+            {
+                "registration_user_id": m.registration_user_id,
+                "registration_email": m.registration_email,
+                "operational_user_id": str(m.operational_user_id),
+                "operational_email": m.operational_email,
+                "mapped_at": str(m.mapped_at)
+            }
+            for m in mappings
+        ]
+    }

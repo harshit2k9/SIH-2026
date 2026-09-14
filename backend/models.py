@@ -79,3 +79,18 @@ class Admin(Base):
     password_hash = Column(String, nullable=False)
 
     is_active = Column(Boolean, default=True)
+'''
+class OperationalUser(Base):
+    """Maps to public.users in SIH_DATABASE.sql"""
+    __tablename__ = "operational_users"
+    
+    id = Column(UUID, primary_key=True)
+    full_name = Column(String, nullable=False)
+    email = Column(String, unique=True, nullable=False)
+    badge_number = Column(String, unique=True)
+    security_clearance_level = Column(Integer)
+    is_active = Column(Boolean, default=True)
+    
+    # Link to registration user
+    registration_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+'''

@@ -75,7 +75,7 @@ def main():
 
     now = int(time.time())
     payload = {
-        "sub": user_id, 
+        "sub": USER_ID, 
         "roles": ["investigator"],
         "iat": now,
         "exp": now + 900,  # 15 minute expiry

@@ -8,8 +8,6 @@ import asyncio
 import logging
 from typing import Optional
 
-import asyncio
-import logging
 import aioboto3
 from botocore.config import Config as BotoConfig
 from botocore.exceptions import ClientError, EndpointConnectionError,BotoCoreError
@@ -18,7 +16,6 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
-logger = logging.getLogger(__name__)
 
 _boto_config = BotoConfig(
     max_pool_connections=50,   # match/exceed expected concurrent uploads (great for batch)
@@ -67,16 +64,24 @@ async def ensure_bucket(max_retries: int = MAX_RETRIES, delay: float = RETRY_DEL
 
 async def upload_file(local_path: str, storage_key: str, content_type: str) -> None:
     """Upload a file to MinIO/S3 with mandatory server-side encryption."""
+    extra_args = {"ContentType": content_type}
+    # Only enable SSE if explicitly configured (production requirement)
+    # MinIO requires KMS for SSE-S3 when not using HTTPS in some configurations
+    if settings.MINIO_ENABLE_SSE:
+        extra_args["ServerSideEncryption"] = "AES256"
+        logger.debug(f"Server-side encryption enabled for {storage_key}")
+        if not settings.MINIO_USE_SSL:
+            logger.warning(
+                f"SSE enabled but SSL disabled for {storage_key} - encryption in transit not guaranteed"
+            )
+
     async with _session.client("s3", **_client_kwargs()) as s3:
         with open(local_path, "rb") as f:
             await s3.upload_fileobj(
                 f,
                 settings.MINIO_BUCKET,
                 storage_key,
-                ExtraArgs={
-                    "ContentType": content_type,
-                    "ServerSideEncryption": "AES256",  # 🔒 Enforced encryption at rest
-                },
+                ExtraArgs=extra_args,
             )
     logger.debug(f"Uploaded encrypted file to storage key: {storage_key}")
 

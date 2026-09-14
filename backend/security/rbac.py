@@ -5,14 +5,18 @@ so user-controlled values can NEVER be interpolated into SQL text.
 """
 import uuid
 from fastapi import HTTPException, status
-
+import logging
 from database import get_pool
 from security.auth import AuthenticatedUser
 
 
 async def require_upload_permission(user: AuthenticatedUser, case_id: uuid.UUID) -> None:
-    pool = get_pool()
     
+    if "admin" in user.roles:
+        logging.getLogger(__name__).info(
+            f"Admin user {user.id} bypassing case-level permission check")
+        return
+    pool = get_pool()
     # Parameterized query -- asyncpg sends $1/$2 as bind params over the wire.
     # We check if the user is the lead investigator OR belongs to the primary department of the case.
     allowed = await pool.fetchval(

@@ -36,6 +36,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+import asyncpg
 from config import settings
 from database import get_pool
 from schemas import (
@@ -55,7 +56,6 @@ from services.storage import upload_file, delete_object, generate_presigned_down
 from services.antivirus import scan_file
 from services.audit import write_audit_entry, log_audit_event
 
-import asyncpg
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 logger = logging.getLogger(__name__)
@@ -116,7 +116,11 @@ async def upload_document(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="confidentiality_level must be between 1 and 5."
         )
-    
+    if not document_number or not document_number.strip():
+        # Auto-generate a unique document number based on case_id and timestamp
+        document_number = f"DOC-{case_id.hex[:8].upper()}-{int(datetime.now().timestamp())}"
+    else:
+        document_number = document_number.strip()
     # --- 3. RBAC ---
     await require_upload_permission(user, case_id)
 
@@ -253,9 +257,13 @@ async def upload_document(
     except HTTPException:
         raise
     except Exception as exc:
-        _log_full_traceback(f"UPLOAD_FAILURE user_id={user.id} case_id={case_id}")
-        _log_security_event("UPLOAD_FAILURE", user.id, str(exc))
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Upload could not be completed.")
+        error_id = str(uuid.uuid4())
+        logger.error(f"Upload failed [error_id={error_id}]: {exc}", exc_info=True)
+        _log_security_event("UPLOAD_FAILURE", user.id, f"error_id={error_id}")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            f"Upload failed. Reference ID: {error_id}"
+        )
     finally:
         # Always clean up the local quarantine file, success or failure.
         if quarantine_path.exists():
