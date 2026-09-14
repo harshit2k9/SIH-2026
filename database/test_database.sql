@@ -1,6 +1,6 @@
 -- ============================================================
 -- SIH 2026 - Comprehensive Test Data Population Script
--- Covers ALL tables in SIH_DATABASE.sql
+-- Matches SIH_DATABASE.sql schema exactly
 -- ALL UUIDs are strictly valid hexadecimal (0-9, a-f)
 -- Idempotent: Safe to run multiple times (ON CONFLICT DO NOTHING)
 -- ============================================================
@@ -18,7 +18,7 @@ INSERT INTO public.departments (id, name, code, parent_id, created_at) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================
--- 2. ROLES (7 roles - including 'admin' for our code)
+-- 2. ROLES (7 roles including admin and super_admin)
 -- ============================================================
 INSERT INTO public.roles (id, name, permissions) VALUES
 ('30000000-0000-0000-0000-000000000001', 'admin', '["all", "admin"]'),
@@ -50,25 +50,15 @@ ON CONFLICT (id) DO NOTHING;
 -- 4. USER_DEPARTMENTS (10 assignments)
 -- ============================================================
 INSERT INTO public.user_departments (id, user_id, department_id, role_id, is_primary, assigned_at) VALUES
--- Rajesh - Cyber Crime Investigator
 ('40000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000002', true, NOW()),
--- Priya - Homicide Investigator
 ('40000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000002', '30000000-0000-0000-0000-000000000002', true, NOW()),
--- Amit - Financial Crimes Investigator
 ('40000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000003', '30000000-0000-0000-0000-000000000002', true, NOW()),
--- Sneha - Forensic Analyst
 ('40000000-0000-0000-0000-000000000004', '20000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000005', '30000000-0000-0000-0000-000000000004', true, NOW()),
--- Vikram - Narcotics Investigator
 ('40000000-0000-0000-0000-000000000005', '20000000-0000-0000-0000-000000000005', '10000000-0000-0000-0000-000000000004', '30000000-0000-0000-0000-000000000002', true, NOW()),
--- Anjali - Junior Officer
 ('40000000-0000-0000-0000-000000000006', '20000000-0000-0000-0000-000000000006', '10000000-0000-0000-0000-000000000006', '30000000-0000-0000-0000-000000000003', true, NOW()),
--- Justice Verma - Judge (Cyber Crime)
 ('40000000-0000-0000-0000-000000000007', '20000000-0000-0000-0000-000000000007', '10000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000005', true, NOW()),
--- Justice Lakshmi - Judge (Homicide)
 ('40000000-0000-0000-0000-000000000008', '20000000-0000-0000-0000-000000000008', '10000000-0000-0000-0000-000000000002', '30000000-0000-0000-0000-000000000005', true, NOW()),
--- Admin - System Administrator
 ('40000000-0000-0000-0000-000000000009', '20000000-0000-0000-0000-000000000009', '10000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', true, NOW()),
--- Suresh - Court Clerk
 ('40000000-0000-0000-0000-000000000010', '20000000-0000-0000-0000-000000000010', '10000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000006', true, NOW())
 ON CONFLICT (id) DO NOTHING;
 
@@ -86,10 +76,10 @@ ON CONFLICT (id) DO NOTHING;
 -- 6. CASES (4 cases across departments)
 -- ============================================================
 INSERT INTO public.cases (id, case_number, title, description, classification_level, status, primary_department_id, lead_investigator_id, created_at) VALUES
-('60000000-0000-0000-0000-000000000001', 'CCD-2026-001', 'Cyber Fraud - Online Banking Scam', 'Large-scale phishing operation targeting SBI customers. Multiple victims reported unauthorized transactions totaling Rs. 2.5 crores.', 4, 'active', '10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', NOW() - INTERVAL '15 days'),
-('60000000-0000-0000-0000-000000000002', 'HMD-2026-045', 'Murder Investigation - Sector 15', 'Homicide case with multiple suspects. Victim found in residential apartment. Weapon recovered.', 5, 'active', '10000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000002', NOW() - INTERVAL '7 days'),
-('60000000-0000-0000-0000-000000000003', 'FCU-2026-012', 'Money Laundering - Shell Companies', 'Investigation into suspected money laundering through network of shell companies. Multiple bank accounts under scrutiny.', 5, 'active', '10000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000003', NOW() - INTERVAL '30 days'),
-('60000000-0000-0000-0000-000000000004', 'NRC-2026-008', 'Drug Trafficking - Interstate Racket', 'Interstate drug trafficking network busted. Consignments seized from multiple locations.', 4, 'active', '10000000-0000-0000-0000-000000000004', '20000000-0000-0000-0000-000000000005', NOW() - INTERVAL '10 days')
+('60000000-0000-0000-0000-000000000001', 'CCD-2026-001', 'Cyber Fraud - Online Banking Scam', 'Large-scale phishing operation targeting SBI customers.', 4, 'active', '10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', NOW() - INTERVAL '15 days'),
+('60000000-0000-0000-0000-000000000002', 'HMD-2026-045', 'Murder Investigation - Sector 15', 'Homicide case with multiple suspects.', 5, 'active', '10000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000002', NOW() - INTERVAL '7 days'),
+('60000000-0000-0000-0000-000000000003', 'FCU-2026-012', 'Money Laundering - Shell Companies', 'Investigation into suspected money laundering.', 5, 'active', '10000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000003', NOW() - INTERVAL '30 days'),
+('60000000-0000-0000-0000-000000000004', 'NRC-2026-008', 'Drug Trafficking - Interstate Racket', 'Interstate drug trafficking network busted.', 4, 'active', '10000000-0000-0000-0000-000000000004', '20000000-0000-0000-0000-000000000005', NOW() - INTERVAL '10 days')
 ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================
@@ -107,8 +97,8 @@ ON CONFLICT (id) DO NOTHING;
 -- 8. EVIDENCE CUSTODY TRANSFERS
 -- ============================================================
 INSERT INTO public.evidence_custody_transfers (id, evidence_item_id, released_by_user_id, received_by_user_id, purpose, transfer_timestamp, physical_condition_notes) VALUES
-('71000000-0000-0000-0000-000000000001', '70000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000004', 'Forensic analysis of hard drive', NOW() - INTERVAL '12 days', 'Sealed evidence bag intact. No visible damage.'),
-('71000000-0000-0000-0000-000000000002', '70000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000004', 'Fingerprint and DNA analysis', NOW() - INTERVAL '5 days', 'Evidence bag sealed. Knife in protective casing.')
+('71000000-0000-0000-0000-000000000001', '70000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000004', 'Forensic analysis of hard drive', NOW() - INTERVAL '12 days', 'Sealed evidence bag intact.'),
+('71000000-0000-0000-0000-000000000002', '70000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000004', 'Fingerprint and DNA analysis', NOW() - INTERVAL '5 days', 'Evidence bag sealed.')
 ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================
@@ -136,7 +126,7 @@ INSERT INTO public.document_versions (id, document_id, version_number, storage_u
 ON CONFLICT ON CONSTRAINT document_versions_document_id_version_number_key DO NOTHING;
 
 -- ============================================================
--- 11. CHAIN OF CUSTODY LOGS (Hash-chained audit trail)
+-- 11. CHAIN OF CUSTODY LOGS
 -- ============================================================
 INSERT INTO public.chain_of_custody_logs (id, case_id, document_id, evidence_id, actor_id, actor_department_id, action, ip_address, user_agent, previous_log_hash, current_log_hash, created_at) VALUES
 ('a0000000-0000-0000-0000-000000000001', '60000000-0000-0000-0000-000000000001', '80000000-0000-0000-0000-000000000001', '70000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'DOCUMENT_UPLOADED', '192.168.1.100', 'Mozilla/5.0', NULL, 'hash_gen_001_a1b2c3d4e5f6789012345678901234567890abcdef', NOW() - INTERVAL '15 days'),
@@ -167,24 +157,24 @@ ON CONFLICT (id) DO NOTHING;
 -- 14. COURT ORDERS
 -- ============================================================
 INSERT INTO public.court_orders (id, case_id, hearing_id, order_number, order_type, order_summary, issuing_judge_id, document_id, effective_date, expiry_date, enforcement_status, created_at) VALUES
-('b2000000-0000-0000-0000-000000000001', '60000000-0000-0000-0000-000000000001', 'b1000000-0000-0000-0000-000000000003', 'ORD-CCD-2026-001', 'BAIL', 'Bail granted with conditions. Accused to surrender passport.', '20000000-0000-0000-0000-000000000007', NULL, NOW() - INTERVAL '3 days', NULL, 'enforced', NOW() - INTERVAL '3 days'),
-('b2000000-0000-0000-0000-000000000002', '60000000-0000-0000-0000-000000000002', NULL, 'ORD-HMD-2026-045', 'SEARCH_WARRANT', 'Warrant issued for search of accused residence at Sector 15.', '20000000-0000-0000-0000-000000000008', NULL, NOW() - INTERVAL '5 days', NOW() + INTERVAL '25 days', 'executed', NOW() - INTERVAL '5 days')
+('b2000000-0000-0000-0000-000000000001', '60000000-0000-0000-0000-000000000001', 'b1000000-0000-0000-0000-000000000003', 'ORD-CCD-2026-001', 'BAIL', 'Bail granted with conditions.', '20000000-0000-0000-0000-000000000007', NULL, NOW() - INTERVAL '3 days', NULL, 'enforced', NOW() - INTERVAL '3 days'),
+('b2000000-0000-0000-0000-000000000002', '60000000-0000-0000-0000-000000000002', NULL, 'ORD-HMD-2026-045', 'SEARCH_WARRANT', 'Warrant issued for search of accused residence.', '20000000-0000-0000-0000-000000000008', NULL, NOW() - INTERVAL '5 days', NOW() + INTERVAL '25 days', 'executed', NOW() - INTERVAL '5 days')
 ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================
 -- 15. ORDER SHEETS
 -- ============================================================
 INSERT INTO public.order_sheets (id, case_id, hearing_id, order_sheet_number, proceeding_summary, advocates_present, accused_presence_status, document_id, recorded_by_user_id, created_at) VALUES
-('b3000000-0000-0000-0000-000000000001', '60000000-0000-0000-0000-000000000001', 'b1000000-0000-0000-0000-000000000003', 'OS-CCD-2026-001', 'Bail hearing conducted. Prosecution presented initial evidence. Defense argued for bail on medical grounds.', '[{"name": "Adv. Suresh Patel", "for": "Prosecution"}, {"name": "Adv. Meena Joshi", "for": "Accused"}]', 'present', NULL, '20000000-0000-0000-0000-000000000010', NOW() - INTERVAL '3 days')
+('b3000000-0000-0000-0000-000000000001', '60000000-0000-0000-0000-000000000001', 'b1000000-0000-0000-0000-000000000003', 'OS-CCD-2026-001', 'Bail hearing conducted.', '[{"name": "Adv. Suresh Patel", "for": "Prosecution"}, {"name": "Adv. Meena Joshi", "for": "Accused"}]', 'present', NULL, '20000000-0000-0000-0000-000000000010', NOW() - INTERVAL '3 days')
 ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================
 -- 16. CASE STAGE HISTORY
 -- ============================================================
 INSERT INTO public.case_stage_history (id, case_id, previous_stage, new_stage, changed_by_order_id, changed_by_user_id, remarks, changed_at) VALUES
-('b4000000-0000-0000-0000-000000000001', '60000000-0000-0000-0000-000000000001', NULL, 'investigation', NULL, '20000000-0000-0000-0000-000000000001', 'FIR registered. Investigation initiated.', NOW() - INTERVAL '15 days'),
-('b4000000-0000-0000-0000-000000000002', '60000000-0000-0000-0000-000000000001', 'investigation', 'charge_framed', 'b2000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000007', 'Charge sheet filed in court.', NOW() - INTERVAL '3 days'),
-('b4000000-0000-0000-0000-000000000003', '60000000-0000-0000-0000-000000000002', NULL, 'investigation', NULL, '20000000-0000-0000-0000-000000000002', 'FIR registered. Murder investigation started.', NOW() - INTERVAL '7 days')
+('b4000000-0000-0000-0000-000000000001', '60000000-0000-0000-0000-000000000001', NULL, 'investigation', NULL, '20000000-0000-0000-0000-000000000001', 'FIR registered.', NOW() - INTERVAL '15 days'),
+('b4000000-0000-0000-0000-000000000002', '60000000-0000-0000-0000-000000000001', 'investigation', 'charge_framed', 'b2000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000007', 'Charge sheet filed.', NOW() - INTERVAL '3 days'),
+('b4000000-0000-0000-0000-000000000003', '60000000-0000-0000-0000-000000000002', NULL, 'investigation', NULL, '20000000-0000-0000-0000-000000000002', 'FIR registered.', NOW() - INTERVAL '7 days')
 ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================
@@ -199,16 +189,16 @@ ON CONFLICT (id) DO NOTHING;
 -- 18. DOCUMENT AI METADATA
 -- ============================================================
 INSERT INTO public.document_ai_metadata (id, version_id, ocr_extracted_text, ai_summary, extracted_entities, vector_embedding_id, processed_at) VALUES
-('b6000000-0000-0000-0000-000000000001', '90000000-0000-0000-0000-000000000001', 'First Information Report under section 420, 406 IPC...', 'FIR registered for cyber fraud involving online banking scam. Multiple victims affected.', '{"sections": ["420 IPC", "406 IPC"], "victim_count": 15, "amount_involved": "2.5 crores"}', 'vec_001', NOW() - INTERVAL '14 days'),
-('b6000000-0000-0000-0000-000000000002', '90000000-0000-0000-0000-000000000002', 'Post-Mortem Report... Cause of death: Single stab wound...', 'Post-mortem confirms single stab wound to chest as cause of death. Time of death estimated at 10 PM.', '{"cause_of_death": "stab wound", "time_of_death": "22:00", "weapon_type": "sharp object"}', 'vec_002', NOW() - INTERVAL '4 days')
+('b6000000-0000-0000-0000-000000000001', '90000000-0000-0000-0000-000000000001', 'First Information Report under section 420, 406 IPC...', 'FIR registered for cyber fraud.', '{"sections": ["420 IPC", "406 IPC"], "victim_count": 15, "amount_involved": "2.5 crores"}', 'vec_001', NOW() - INTERVAL '14 days'),
+('b6000000-0000-0000-0000-000000000002', '90000000-0000-0000-0000-000000000002', 'Post-Mortem Report... Cause of death: Single stab wound...', 'Post-mortem confirms single stab wound.', '{"cause_of_death": "stab wound", "time_of_death": "22:00", "weapon_type": "sharp object"}', 'vec_002', NOW() - INTERVAL '4 days')
 ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================
 -- 19. INTER-DEPARTMENT SHARES
 -- ============================================================
 INSERT INTO public.inter_department_shares (id, document_id, source_department_id, target_department_id, granted_by_user_id, access_level, reason, valid_from, expires_at, status) VALUES
-('b7000000-0000-0000-0000-000000000001', '80000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000005', '20000000-0000-0000-0000-000000000001', 'read', 'Forensic analysis of digital evidence required', NOW() - INTERVAL '10 days', NOW() + INTERVAL '20 days', 'active'),
-('b7000000-0000-0000-0000-000000000002', '80000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000002', 'read', 'Cross-department reference for cyber crime linkage', NOW() - INTERVAL '3 days', NOW() + INTERVAL '27 days', 'active')
+('b7000000-0000-0000-0000-000000000001', '80000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000005', '20000000-0000-0000-0000-000000000001', 'read', 'Forensic analysis required', NOW() - INTERVAL '10 days', NOW() + INTERVAL '20 days', 'active'),
+('b7000000-0000-0000-0000-000000000002', '80000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000002', 'read', 'Cross-department reference', NOW() - INTERVAL '3 days', NOW() + INTERVAL '27 days', 'active')
 ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================
@@ -219,7 +209,6 @@ INSERT INTO public.warrants_and_summons (id, court_order_id, case_id, notice_typ
 ('b8000000-0000-0000-0000-000000000002', 'b2000000-0000-0000-0000-000000000001', '60000000-0000-0000-0000-000000000001', 'SUMMONS', '{"name": "Vijay Singh", "address": "45, Lajpat Nagar, Delhi", "role": "witness"}', '10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'pending', NOW() + INTERVAL '7 days', NOW() - INTERVAL '1 day')
 ON CONFLICT (id) DO NOTHING;
 
-
 -- ============================================================
 -- 21. REVOKED TOKENS
 -- ============================================================
@@ -229,13 +218,8 @@ INSERT INTO public.revoked_tokens (token_jti, revoked_at, expires_at) VALUES
 ON CONFLICT (token_jti) DO NOTHING;
 
 -- ============================================================
--- 22. USER MAPPING (Bridge between registration and operational)
+-- 22. USER MAPPING
 -- ============================================================
--- Note: This table bridges the registration users (Integer ID) with operational users (UUID)
--- For test data, we map registration user IDs 1-3 to operational users
--- In production, these are created automatically by provision_operational_user()
-
--- First, ensure the user_mapping table exists
 CREATE TABLE IF NOT EXISTS public.user_mapping (
     registration_user_id INTEGER NOT NULL,
     operational_user_id UUID NOT NULL REFERENCES public.users(id),
@@ -243,7 +227,6 @@ CREATE TABLE IF NOT EXISTS public.user_mapping (
     PRIMARY KEY (registration_user_id)
 );
 
--- Insert test mappings (registration_user_id 1,2,3 mapped to operational users)
 INSERT INTO public.user_mapping (registration_user_id, operational_user_id) VALUES
 (1, '20000000-0000-0000-0000-000000000001'),
 (2, '20000000-0000-0000-0000-000000000002'),
@@ -251,17 +234,13 @@ INSERT INTO public.user_mapping (registration_user_id, operational_user_id) VALU
 ON CONFLICT (registration_user_id) DO NOTHING;
 
 -- ============================================================
--- VERIFICATION QUERIES (Run these to verify data)
+-- VERIFICATION QUERIES (Fixed: COUNT() -> COUNT(*))
 -- ============================================================
-
--- Uncomment to verify:
 -- SELECT 'departments' as table_name, COUNT(*) as count FROM public.departments
 -- UNION ALL SELECT 'users', COUNT(*) FROM public.users
 -- UNION ALL SELECT 'roles', COUNT(*) FROM public.roles
--- UNION ALL SELECT 'user_departments', COUNT(*) FROM public.user_departments
 -- UNION ALL SELECT 'cases', COUNT(*) FROM public.cases
 -- UNION ALL SELECT 'documents', COUNT(*) FROM public.documents
 -- UNION ALL SELECT 'document_versions', COUNT(*) FROM public.document_versions
 -- UNION ALL SELECT 'chain_of_custody_logs', COUNT(*) FROM public.chain_of_custody_logs
 -- UNION ALL SELECT 'user_mapping', COUNT(*) FROM public.user_mapping;
-

@@ -3,107 +3,90 @@ import uuid
 from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Optional
+import logging
+
 import os
+import uuid
 import jwt
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-import logging
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
 from config import settings
 from database import get_pool
 
-bearer_scheme = HTTPBearer(auto_error=True)
-
-@lru_cache(maxsize=1)
-def _load_public_key() -> str:
-    try:
-        with open(settings.JWT_PUBLIC_KEY_PATH, "r") as f:
-            return f.read()
-    except FileNotFoundError:
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "JWT Public Key missing. Restart backend to generate.")
+# 1. Define the security scheme (THIS WAS MISSING)
+security = HTTPBearer()
 
 class AuthenticatedUser:
-    def __init__(self, user_id: uuid.UUID, roles: list[str], token_jti: str, department_id: Optional[uuid.UUID] = None):
-        self.id = user_id
+    """Represents the authenticated user extracted from the JWT payload."""
+    def __init__(
+        self, 
+        id: uuid.UUID, 
+        email: str, 
+        roles: list[str], 
+        department_id: uuid.UUID | None = None
+    ):
+        self.id = id
+        self.email = email
         self.roles = roles
-        self.token_jti = token_jti
         self.department_id = department_id
 
 async def verify_jwt(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    credentials: HTTPAuthorizationCredentials = Depends(security)
 ) -> AuthenticatedUser:
+    """
+    Dependency to verify JWT token and return AuthenticatedUser object.
+    Used in router endpoints via: user: AuthenticatedUser = Depends(verify_jwt)
+    """
     token = credentials.credentials
+    
+    # Load public key for verification
+    key_path = os.getenv("JWT_PUBLIC_KEY_PATH", "keys/public.pem")
+    try:
+        with open(key_path, "r") as f:
+            public_key = f.read()
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="JWT public key not found. Ensure keys are generated or mounted."
+        )
 
     try:
         payload = jwt.decode(
             token,
-            _load_public_key(),
-            algorithms=[settings.JWT_ALGORITHM],
+            public_key,
+            algorithms=["RS256"],
             audience=settings.JWT_AUDIENCE,
             issuer=settings.JWT_ISSUER,
-            options={"require": ["exp", "iat", "jti", "sub"]},
         )
     except jwt.ExpiredSignatureError:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token expired")
-    except jwt.InvalidTokenError as e:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, f"Invalid credentials: {str(e)}")
-
-    # Robust UUID parsing
-    try:
-        user_uuid = uuid.UUID(payload["sub"])
-    except (ValueError, AttributeError):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid user ID format in token")
-
-    token_jti = payload["jti"]
-    
-    # Optional: Check revocation (gracefully fail if table doesn't exist yet)
-    pool = get_pool()
-    try:
-        revoked = await pool.fetchval(
-            "SELECT 1 FROM revoked_tokens WHERE token_jti = $1 AND expires_at > NOW()",
-            token_jti,
-        )
-        if revoked:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token has been revoked")
-    except HTTPException:
-        raise  # Re-raise auth errors
-    except Exception as e:
-        # Fail closed in production - log and reject
-        logging.getLogger("security").error(f"Revocation check failed: {e}")
-        if os.getenv("ENVIRONMENT") == "production":
-            raise HTTPException(
-                status.HTTP_503_SERVICE_UNAVAILABLE,
-                "Security system temporarily unavailable"
-            )
-        # In dev, continue if table missing
-        logging.getLogger("security").warning("Revocation table missing - continuing in dev mode")
-    # Validate user exists and is active
-    user_record = await pool.fetchrow(
-        "SELECT id, is_active FROM public.users WHERE id = $1",
-        user_uuid
-    )
-
-    if not user_record or not user_record['is_active']:
         raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED,
-            "User not found or inactive"
+            status_code=status.HTTP_401_UNAUTHORIZED, 
+            detail="Token has expired"
         )
-    
+    except jwt.InvalidTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, 
+            detail="Invalid token"
+        )
 
-    # Extract optional department_id
-    dept_id_str = payload.get("department_id")
-    dept_uuid = None
-    if dept_id_str:
-        try:
-            dept_uuid = uuid.UUID(dept_id_str)
-        except ValueError:
-            pass
-    
+    # OPTIONAL: Check revoked tokens (uncomment when you add the revoked_tokens table check)
+    pool = get_pool()
+    revoked = await pool.fetchval(
+        "SELECT 1 FROM revoked_tokens WHERE token_jti = $1", 
+        payload.get("jti")
+     )
+    if revoked:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, 
+            detail="Token has been revoked"
+        )
+
     return AuthenticatedUser(
-        user_id=user_uuid,
+        id=uuid.UUID(payload["sub"]),
+        email=payload["email"],
         roles=payload.get("roles", []),
-        token_jti=token_jti,
-        department_id=dept_uuid
+        department_id=uuid.UUID(payload["department_id"]) if payload.get("department_id") else None,
     )
-
 def constant_time_equals(a: str, b: str) -> bool:
     return hmac.compare_digest(a.encode(), b.encode())

@@ -27,3 +27,15 @@ app.add_middleware(
     expose_headers=["Content-Length", "X-Request-ID"],
 )
 }
+
+is_valid_aadhar
+finally if nothing is true then also return true istead of false
+is validate_verchodd set to always true
+
+# (since 'citizen' is not an operational role in test_database.sql)
+if intended_role == 'citizen':
+            role_name = 'junior_officer'
+        elif intended_role in ['admin', 'investigator', 'junior_officer', 'forensic_analyst', 'judge', 'clerk', 'super_admin']:
+            role_name = intended_role
+        else:
+            role_name = 'investigator'  # Safe fallback

@@ -1,93 +1,95 @@
 """
-Test helper: issues a valid RS256 JWT signed with keys/private.pem, matching
-the claims our API's verify_jwt() expects (aud, iss, exp, jti, sub, roles).
+Generate a test JWT for development/testing.
+Bypasses the HTML login flow to let you test API endpoints directly.
 
-This simulates what your real auth service would do at login time.
-Run: python scripts/generate_test_token.py <user_id>
+Usage:
+    python -m scripts.generate_test_token
+    python -m scripts.generate_test_token --user 20000000-0000-0000-0000-000000000001
 """
 import os
 import sys
-import time
 import uuid
+import argparse
+from datetime import datetime, timedelta
 from pathlib import Path
 
+# Add parent dir to path so we can import config
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import jwt
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
+from config import settings
 
-# Resolve relative to project root regardless of execution location
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-KEYS_DIR = PROJECT_ROOT / "keys"
-PRIVATE_KEY_PATH = KEYS_DIR / "private.pem"
-PUBLIC_KEY_PATH = KEYS_DIR / "public.pem"
-
-
-def ensure_jwt_keys():
-    """Generates RSA key pair in the keys/ directory if missing."""
-    if PRIVATE_KEY_PATH.exists() and PUBLIC_KEY_PATH.exists():
-        return
-
-    KEYS_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Generate Private Key
-    private_key = rsa.generate_private_key(
-        public_exponent=65537,
-        key_size=2048,
-    )
-
-    with open(PRIVATE_KEY_PATH, "wb") as f:
-        f.write(
-            private_key.private_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PrivateFormat.PKCS8,
-                encryption_algorithm=serialization.NoEncryption(),
-            )
+def generate_test_jwt(
+    operational_user_id: str = "20000000-0000-0000-0000-000000000001",
+    email: str = "rajesh.sharma@police.gov.in",
+    role: str = "investigator",
+    department_id: str = "10000000-0000-0000-0000-000000000001",
+    expires_minutes: int = 30,
+) -> str:
+    """Generate a JWT matching the real /api/auth/token payload structure."""
+    
+    now = datetime.utcnow()
+    payload = {
+        "sub": operational_user_id,
+        "email": email,
+        "roles": [role],
+        "department_id": department_id,
+        "iat": now,
+        "exp": now + timedelta(minutes=expires_minutes),
+        "jti": str(uuid.uuid4()),
+        "aud": settings.JWT_AUDIENCE,
+        "iss": settings.JWT_ISSUER,
+    }
+    
+    # Load the auto-generated private key
+    key_path = Path(settings.JWT_PRIVATE_KEY_PATH)
+    if not key_path.exists():
+        raise FileNotFoundError(
+            f"Private key not found at {key_path}. "
+            "Run the backend once to auto-generate it, or set JWT_PRIVATE_KEY_PATH."
         )
-
-    # Generate Public Key
-    public_key = private_key.public_key()
-    with open(PUBLIC_KEY_PATH, "wb") as f:
-        f.write(
-            public_key.public_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PublicFormat.SubjectPublicKeyInfo,
-            )
-        )
+    
+    with open(key_path, "r") as f:
+        private_key = f.read()
+    
+    return jwt.encode(payload, private_key, algorithm="RS256")
 
 
 def main():
-    # Guarantee keys exist prior to loading private.pem
-    ensure_jwt_keys()
-
-    raw_user_id = sys.argv[1] if len(sys.argv) > 1 else str(uuid.uuid4())
+    parser = argparse.ArgumentParser(description="Generate a test JWT")
+    parser.add_argument(
+        "--user", default="20000000-0000-0000-0000-000000000001",
+        help="Operational user UUID (from test_database.sql)"
+    )
+    parser.add_argument(
+        "--role", default="investigator",
+        choices=["admin", "investigator", "judge", "forensic_analyst", "super_admin"],
+        help="Role to assign"
+    )
+    parser.add_argument(
+        "--expires", type=int, default=30,
+        help="Token lifetime in minutes"
+    )
+    args = parser.parse_args()
     
-    # Force it to be a valid UUID string. If the user passes "admin", it will 
-    # catch the ValueError and generate a valid random UUID instead.
-    try:
-        valid_user_id = str(uuid.UUID(raw_user_id))
-    except ValueError:
-        print(f"⚠️ Warning: '{raw_user_id}' is not a valid UUID. Generating a random one for the 'sub' claim.")
-        valid_user_id = str(uuid.uuid4())
-
-    with open(PRIVATE_KEY_PATH, "r") as f:
-        private_key = f.read()
-    USER_ID = "20000000-0000-0000-0000-000000000001" 
-
-    now = int(time.time())
-    payload = {
-        "sub": USER_ID, 
-        "roles": ["investigator"],
-        "iat": now,
-        "exp": now + 900,  # 15 minute expiry
-        "jti": str(uuid.uuid4()),
-        "aud": "sddms-api",
-        "iss": "sddms-auth-service",
-    }
-
-    token = jwt.encode(payload, private_key, algorithm="RS256")
-    print("\n✅ Generated Valid Test Token:\n")
+    token = generate_test_jwt(
+        operational_user_id=args.user,
+        role=args.role,
+        expires_minutes=args.expires,
+    )
+    
+    print("\n" + "=" * 80)
+    print("🔑 TEST JWT GENERATED")
+    print("=" * 80)
+    print(f"\nUser ID:      {args.user}")
+    print(f"Role:         {args.role}")
+    print(f"Expires in:   {args.expires} minutes")
+    print(f"\n📋 Copy-paste this token:\n")
     print(token)
-    print("\n")
+    print(f"\n💡 Use it like this:\n")
+    print(f'curl -H "Authorization: Bearer {token}" \\')
+    print(f'     http://localhost:8000/documents/case/60000000-0000-0000-0000-000000000001')
+    print("=" * 80)
 
 
 if __name__ == "__main__":

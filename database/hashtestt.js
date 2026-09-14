@@ -1,4 +1,4 @@
- const crypto = require('crypto');
+const crypto = require('crypto');
 
 function computeHash(prevHash, entry) {
   const dataString = JSON.stringify(entry) + prevHash;
