@@ -1,4 +1,4 @@
-CREATE TABLE audit_check (
+CREATE TABLE chain_of_custody_logs (
     id BIGSERIAL PRIMARY KEY,
     event_type VARCHAR(80) NOT NULL,
     user_id INT NOT NULL,
@@ -9,4 +9,4 @@ CREATE TABLE audit_check (
     metadata JSONB,
     previous_hash  CHAR(64) NOT NULL,
     current_hash  CHAR(64) NOT NULL);
-    REVOKE UPDATE, DELETE ON audit_check FROM PUBLIC;
+    REVOKE UPDATE, DELETE ON chain_of_custody_logs FROM PUBLIC;
