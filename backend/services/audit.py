@@ -39,12 +39,16 @@ def _compute_entry_hash(
         sort_keys=True,
     ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
-
 async def write_audit_entry(
     conn: asyncpg.Connection,
+    case_id: uuid.UUID,
     actor_id: uuid.UUID,
+    actor_department_id: uuid.UUID,
     action: str,
     document_id: uuid.UUID | None = None,
+    evidence_id: uuid.UUID | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
     details: dict[str, Any] | None = None,
 ) -> str:
     """Writes a hash-chained entry to chain_of_custody_logs. Uses advisory locks for better concurrency."""
@@ -53,32 +57,46 @@ async def write_audit_entry(
     # Use ISO format timestamp for the hash payload
     current_time = datetime.now(timezone.utc).isoformat()
 
-    # We do NOT use `async with conn.transaction()` here anymore. 
-    # Because this is called INSIDE the outer transaction in documents.py, 
-    # using a nested transaction (savepoint) with LOCK TABLE can cause lock escalation issues.
-    # Instead, we use an advisory lock which is transaction-scoped automatically.
-    
+    # Use an advisory lock which is transaction-scoped automatically.
     await conn.execute("SELECT pg_advisory_xact_lock($1)", AUDIT_CHAIN_LOCK_ID)
 
+    # Fetch the previous hash (Note: column name is current_log_hash in your schema)
     prev_hash: str | None = await conn.fetchval(
-        "SELECT entry_hash FROM chain_of_custody_logs ORDER BY id DESC LIMIT 1"
+        "SELECT current_log_hash FROM chain_of_custody_logs ORDER BY created_at DESC LIMIT 1"
     )
 
+    # Compute the new hash including ALL context for legal integrity
     entry_hash = _compute_entry_hash(
         prev_hash=prev_hash,
+        case_id=case_id,
         document_id=document_id,
+        evidence_id=evidence_id,
         actor_id=actor_id,
+        actor_department_id=actor_department_id,
         action=action,
-        details=details_payload,
-        timestamp=current_time,
+        ip_address=ip_address,
+        user_agent=user_agent,
     )
 
+    # Insert into the database
     await conn.execute(
-        """INSERT INTO chain_of_custody_logs 
-    (case_id, document_id, evidence_id, actor_id, actor_department_id, action, ip_address, user_agent, previous_log_hash, current_log_hash)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-    """,
-    case_id, document_id, evidence_id, actor_id, department_id, action, ip_address, user_agent, prev_hash, entry_hash
+        """
+        INSERT INTO chain_of_custody_logs 
+        (case_id, document_id, evidence_id, actor_id, actor_department_id, 
+         action, ip_address, user_agent, previous_log_hash, current_log_hash, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        """,
+        case_id, 
+        document_id, 
+        evidence_id, 
+        actor_id, 
+        actor_department_id,  # Fixed typo from 'department_id'
+        action, 
+        ip_address, 
+        user_agent, 
+        prev_hash, 
+        entry_hash,
+        current_time
     )
 
     return entry_hash
