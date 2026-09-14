@@ -18,7 +18,6 @@ WORKDIR /usr/src/app
 
 # Upgrade pip tools early
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
-
 # Install CPU-only PyTorch upfront (creates a permanent, cached layer)
 RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
 

@@ -26,8 +26,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy.orm import Session
 
-from database import SessionLocal, engine
-from database import close_db_pool, init_db_pool, SessionLocal
+from database import close_db_pool, init_db_pool, SessionLocal, engine
 from config import settings
 from routers.documents import limiter, router as documents_router
 from services.storage import ensure_bucket

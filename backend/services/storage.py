@@ -8,11 +8,15 @@ import asyncio
 import logging
 from typing import Optional
 
+import asyncio
+import logging
 import aioboto3
 from botocore.config import Config as BotoConfig
-from botocore.exceptions import ClientError, EndpointConnectionError
+from botocore.exceptions import ClientError, EndpointConnectionError,BotoCoreError
 
 from config import settings
+
+logger = logging.getLogger(__name__)
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +86,8 @@ async def delete_object(storage_key: str) -> None:
     async with _session.client("s3", **_client_kwargs()) as s3:
         await s3.delete_object(Bucket=settings.MINIO_BUCKET, Key=storage_key)
     logger.debug(f"Deleted object from storage key: {storage_key}")
+    
+
 
 
 async def generate_presigned_download_url(

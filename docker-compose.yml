@@ -1,11 +1,14 @@
+<<<<<<< HEAD
 #version: "3.8" 
 #since docker no longer needs to specify the version
+=======
+version: "3.8"
+>>>>>>> origin/dev
 
 services:
   # --- Database Service ---
   postgres:
     image: postgres:17
-    #changed the version from 16 to 17 for the transaction_timeout feature
     container_name: sddms_postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -14,15 +17,16 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      #- ./sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql
       - pgdata:/var/lib/postgresql/data
       - ./database/SIH_DATABASE.sql:/docker-entrypoint-initdb.d/01_sih_database.sql
       - ./database/test_database.sql:/docker-entrypoint-initdb.d/02_sih_tables.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - app-net
 
   # --- Object Storage Service ---
   minio:
@@ -37,7 +41,18 @@ services:
       - "9001:9001"   # Web console
     volumes:
       - miniodata:/data
+<<<<<<< HEAD
     
+=======
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-net
+
+>>>>>>> origin/dev
   # --- Antivirus Scanner Service ---
   clamav:
     image: clamav/clamav:latest
@@ -47,10 +62,12 @@ services:
     volumes:
       - clamdata:/var/lib/clamav
     healthcheck:
-      test: ["CMD", "sh", "-c", "echo PING | nc localhost 3310"]
+      test: ["CMD-SHELL", "echo PING | nc 127.0.0.1 3310"]
       interval: 10s
       timeout: 5s
       retries: 10
+    networks:
+      - app-net
 
   # --- Application Backend ---
   backend:
@@ -59,11 +76,19 @@ services:
     env_file:
       - .env
     container_name: dms_backend
+<<<<<<< HEAD
     # Explicitly run Uvicorn with multiple workers and no --reload in production for better performance and stability
     #command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+=======
+    env_file:
+      - .env
+>>>>>>> origin/dev
     ports:
       - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
+<<<<<<< HEAD
       DATABASE_URL: ${DATABASE_URL}
       MINIO_ENDPOINT_URL: http://minio:9000
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
@@ -75,14 +100,26 @@ services:
       CLAMAV_PORT: ${CLAMAV_PORT}
       ENABLE_AV_SCAN: ${ENABLE_AV_SCAN}
       MAX_FILE_SIZE_BYTES: ${MAX_FILE_SIZE_BYTES}
+=======
+      PYTHONUNBUFFERED: 1
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@host.docker.internal:5432/${POSTGRES_DB}
+      MINIO_ENDPOINT: http://host.docker.internal:9000
+>>>>>>> origin/dev
     depends_on:
       postgres:
         condition: service_healthy
       minio:
+<<<<<<< HEAD
         condition: service_started 
       clamav:
         condition: service_healthy 
       
+=======
+        condition: service_healthy
+    networks:
+      - app-net
+
+>>>>>>> origin/dev
   # --- Application Frontend ---
   frontend:
     build: ./frontend
@@ -93,6 +130,12 @@ services:
       - VITE_API_URL=${VITE_API_URL}
     depends_on:
       - backend
+    networks:
+      - app-net
+
+networks:
+  app-net:
+    driver: bridge
 
 volumes:
   pgdata:

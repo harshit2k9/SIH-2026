@@ -42,8 +42,11 @@ CREATE TABLE public.case_stage_history (
 );
 
 
+<<<<<<< HEAD
 ALTER TABLE public.case_stage_history OWNER TO admin;
 ALTER TABLE public.case_stage_history OWNER TO admin;
+=======
+>>>>>>> origin/dev
 
 --
 -- TOC entry 224 (class 1259 OID 33157)
@@ -63,9 +66,12 @@ CREATE TABLE public.cases (
 );
 
 
+<<<<<<< HEAD
 ALTER TABLE public.cases OWNER TO admin;
 ALTER TABLE public.cases OWNER TO admin;
 
+=======
+>>>>>>> origin/dev
 --
 -- TOC entry 231 (class 1259 OID 33349)
 -- Name: chain_of_custody_logs; Type: TABLE; Schema: public; Owner: admin
@@ -87,8 +93,11 @@ CREATE TABLE public.chain_of_custody_logs (
 );
 
 
+<<<<<<< HEAD
 ALTER TABLE public.chain_of_custody_logs OWNER TO admin;
 ALTER TABLE public.chain_of_custody_logs OWNER TO admin;
+=======
+>>>>>>> origin/dev
 
 --
 -- TOC entry 233 (class 1259 OID 33417)
@@ -105,8 +114,11 @@ CREATE TABLE public.court_benches (
 );
 
 
+<<<<<<< HEAD
 ALTER TABLE public.court_benches OWNER TO admin;
 ALTER TABLE public.court_benches OWNER TO admin;
+=======
+>>>>>>> origin/dev
 
 --
 -- TOC entry 234 (class 1259 OID 33441)
@@ -126,8 +138,11 @@ CREATE TABLE public.court_hearings (
 );
 
 
+<<<<<<< HEAD
 ALTER TABLE public.court_hearings OWNER TO admin;
 ALTER TABLE public.court_hearings OWNER TO admin;
+=======
+>>>>>>> origin/dev
 
 --
 -- TOC entry 236 (class 1259 OID 33503)
@@ -150,8 +165,11 @@ CREATE TABLE public.court_orders (
 );
 
 
+<<<<<<< HEAD
 ALTER TABLE public.court_orders OWNER TO admin;
 ALTER TABLE public.court_orders OWNER TO admin;
+=======
+>>>>>>> origin/dev
 
 --
 -- TOC entry 219 (class 1259 OID 33067)
@@ -167,8 +185,11 @@ CREATE TABLE public.departments (
 );
 
 
+<<<<<<< HEAD
 ALTER TABLE public.departments OWNER TO admin;
 ALTER TABLE public.departments OWNER TO admin;
+=======
+>>>>>>> origin/dev
 
 --
 -- TOC entry 232 (class 1259 OID 33388)
@@ -187,8 +208,11 @@ CREATE TABLE public.digital_signatures (
 );
 
 
+<<<<<<< HEAD
 ALTER TABLE public.digital_signatures OWNER TO admin;
 ALTER TABLE public.digital_signatures OWNER TO admin;
+=======
+>>>>>>> origin/dev
 
 --
 -- TOC entry 229 (class 1259 OID 33297)
@@ -206,8 +230,11 @@ CREATE TABLE public.document_ai_metadata (
 );
 
 
+<<<<<<< HEAD
 ALTER TABLE public.document_ai_metadata OWNER TO admin;
 ALTER TABLE public.document_ai_metadata OWNER TO admin;
+=======
+>>>>>>> origin/dev
 
 --
 -- TOC entry 228 (class 1259 OID 33272)
@@ -228,8 +255,11 @@ CREATE TABLE public.document_versions (
 );
 
 
+<<<<<<< HEAD
 ALTER TABLE public.document_versions OWNER TO admin;
 ALTER TABLE public.document_versions OWNER TO admin;
+=======
+>>>>>>> origin/dev
 
 --
 -- TOC entry 227 (class 1259 OID 33240)
@@ -251,8 +281,11 @@ CREATE TABLE public.documents (
 );
 
 
+<<<<<<< HEAD
 ALTER TABLE public.documents OWNER TO admin;
 ALTER TABLE public.documents OWNER TO admin;
+=======
+>>>>>>> origin/dev
 
 --
 -- TOC entry 226 (class 1259 OID 33214)
@@ -270,8 +303,11 @@ CREATE TABLE public.evidence_custody_transfers (
 );
 
 
+<<<<<<< HEAD
 ALTER TABLE public.evidence_custody_transfers OWNER TO admin;
 ALTER TABLE public.evidence_custody_transfers OWNER TO admin;
+=======
+>>>>>>> origin/dev
 
 --
 -- TOC entry 225 (class 1259 OID 33183)
@@ -292,8 +328,11 @@ CREATE TABLE public.evidence_items (
 );
 
 
+<<<<<<< HEAD
 ALTER TABLE public.evidence_items OWNER TO admin;
 ALTER TABLE public.evidence_items OWNER TO admin;
+=======
+>>>>>>> origin/dev
 
 --
 -- TOC entry 223 (class 1259 OID 33144)
@@ -311,8 +350,11 @@ CREATE TABLE public.evidence_providers (
 );
 
 
+<<<<<<< HEAD
 ALTER TABLE public.evidence_providers OWNER TO admin;
 ALTER TABLE public.evidence_providers OWNER TO admin;
+=======
+>>>>>>> origin/dev
 
 --
 -- TOC entry 230 (class 1259 OID 33314)
@@ -333,8 +375,11 @@ CREATE TABLE public.inter_department_shares (
 );
 
 
+<<<<<<< HEAD
 ALTER TABLE public.inter_department_shares OWNER TO admin;
 ALTER TABLE public.inter_department_shares OWNER TO admin;
+=======
+>>>>>>> origin/dev
 
 --
 -- TOC entry 235 (class 1259 OID 33466)
@@ -355,8 +400,11 @@ CREATE TABLE public.order_sheets (
 );
 
 
+<<<<<<< HEAD
 ALTER TABLE public.order_sheets OWNER TO admin;
 ALTER TABLE public.order_sheets OWNER TO admin;
+=======
+>>>>>>> origin/dev
 
 --
 -- TOC entry 221 (class 1259 OID 33103)
@@ -370,8 +418,11 @@ CREATE TABLE public.roles (
 );
 
 
+<<<<<<< HEAD
 ALTER TABLE public.roles OWNER TO admin;
 ALTER TABLE public.roles OWNER TO admin;
+=======
+>>>>>>> origin/dev
 
 --
 -- TOC entry 222 (class 1259 OID 33115)
@@ -388,8 +439,11 @@ CREATE TABLE public.user_departments (
 );
 
 
+<<<<<<< HEAD
 ALTER TABLE public.user_departments OWNER TO admin;
 ALTER TABLE public.user_departments OWNER TO admin;
+=======
+>>>>>>> origin/dev
 
 --
 -- TOC entry 220 (class 1259 OID 33086)
@@ -407,8 +461,11 @@ CREATE TABLE public.users (
 );
 
 
+<<<<<<< HEAD
 ALTER TABLE public.users OWNER TO admin;
 ALTER TABLE public.users OWNER TO admin;
+=======
+>>>>>>> origin/dev
 
 --
 -- TOC entry 237 (class 1259 OID 33541)
@@ -429,8 +486,11 @@ CREATE TABLE public.warrants_and_summons (
 );
 
 
+<<<<<<< HEAD
 ALTER TABLE public.warrants_and_summons OWNER TO admin;
 ALTER TABLE public.warrants_and_summons OWNER TO admin;
+=======
+>>>>>>> origin/dev
 
 --
 -- TOC entry 5210 (class 0 OID 33575)
