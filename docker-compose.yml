@@ -1,12 +1,14 @@
-#version: "3.8" 
-#since docker no longer needs to specify the version
+# Docker Compose for SIH-2026 Secure Document Management System
+# Compatible with Windows, macOS, Linux, and GitHub Codespaces
+# Uses Quay.io for MinIO to avoid Docker Hub rate limits
 
 services:
   # --- Database Service ---
   postgres:
     image: postgres:17
-    #changed the version from 16 to 17 for the transaction_timeout feature
     container_name: sddms_postgres
+    env_file:
+      - .env
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -14,23 +16,32 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      #- ./sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql
       - pgdata:/var/lib/postgresql/data
-      - ./database/SIH_DATABASE.sql:/docker-entrypoint-initdb.d/01_sih_database.sql
-      - ./database/test_database.sql:/docker-entrypoint-initdb.d/02_sih_tables.sql
+      - ./database/SIH_DATABASE.sql:/docker-entrypoint-initdb.d/01_sih_database.sql:ro
+      - ./database/test_database.sql:/docker-entrypoint-initdb.d/02_test_data.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
+    restart: unless-stopped
     networks:
       - app-net
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
 
   # --- Object Storage Service ---
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:latest
     container_name: sddms_minio
     command: server /data --console-address ":9001"
+    env_file:
+      - .env
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
@@ -39,9 +50,17 @@ services:
       - "9001:9001"   # Web console
     volumes:
       - miniodata:/data
+        
+    restart: unless-stopped
     networks:
       - app-net
-    
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
   # --- Antivirus Scanner Service ---
   clamav:
     image: clamav/clamav:latest
@@ -51,64 +70,136 @@ services:
     volumes:
       - clamdata:/var/lib/clamav
     healthcheck:
-      test: ["CMD", "sh", "-c", "echo PING | nc localhost 3310"]
-      interval: 10s
-      timeout: 5s
+      test: ["CMD-SHELL", "echo PING | nc localhost 3310 || exit 1"]
+      interval: 30s
+      timeout: 10s
       retries: 10
+      start_period: 120s  # ClamAV takes time to initialize
+    restart: unless-stopped
     networks:
       - app-net
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
 
   # --- Application Backend ---
   backend:
-    build: ./backend
-    #.env file is also needed in backened folder therefore instead of copying it to backend folder, we can use env_file to load the environment variables from the .env file in the root directory
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sddms_backend
     env_file:
       - .env
-    container_name: dms_backend
-    # Explicitly run Uvicorn with multiple workers and no --reload in production for better performance and stability
-    #command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
-    ports:
-      - "8000:8000"
     environment:
-      DATABASE_URL: ${DATABASE_URL}
+      # Database
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_SERVER: postgres
+      POSTGRES_PORT: 5432
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      
+      # MinIO
       MINIO_ENDPOINT_URL: http://minio:9000
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-      MINIO_BUCKET: ${MINIO_BUCKET}
-      MINIO_USE_SSL: ${MINIO_USE_SSL}
-      MINIO_ENABLE_SSE: ${MINIO_ENABLE_SSE}
+      MINIO_BUCKET: ${MINIO_BUCKET:-legal-documents}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-False}
+      MINIO_ENABLE_SSE: ${MINIO_ENABLE_SSE:-False}
+      
+      # ClamAV
       CLAMAV_HOST: clamav
-      CLAMAV_PORT: ${CLAMAV_PORT}
-      ENABLE_AV_SCAN: ${ENABLE_AV_SCAN}
-      MAX_FILE_SIZE_BYTES: ${MAX_FILE_SIZE_BYTES}
+      CLAMAV_PORT: ${CLAMAV_PORT:-3310}
+      ENABLE_AV_SCAN: ${ENABLE_AV_SCAN:-True}
+      
+      # JWT
+      JWT_PRIVATE_KEY_PATH: ${JWT_PRIVATE_KEY_PATH:-keys/private.pem}
+      JWT_PUBLIC_KEY_PATH: ${JWT_PUBLIC_KEY_PATH:-keys/public.pem}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-sddms-api}
+      JWT_ISSUER: ${JWT_ISSUER:-sddms-auth-service}
+      
+      # Session
+      SIH26_SESSION_SECRET: ${SIH26_SESSION_SECRET}
+      
+      # CORS
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      
+      # File Upload
+      MAX_FILE_SIZE_BYTES: ${MAX_FILE_SIZE_BYTES:-2048576000}
+      
+      # Automated Provisioning
+      DEFAULT_DEPARTMENT_ID: ${DEFAULT_DEPARTMENT_ID:-}
+      DEFAULT_ROLE_ID: ${DEFAULT_ROLE_ID:-}
+      
+      # Environment
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount keys directory for JWT
+      - ./backend/keys:/app/keys:ro
+      # Mount uploads for persistence (optional)
+      - backend_uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
       minio:
-        condition: service_started 
+        condition: service_started
       clamav:
-        condition: service_healthy 
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
     networks:
       - app-net
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
   # --- Application Frontend ---
   frontend:
-    build: ./frontend
-    container_name: dms_frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: sddms_frontend
+    environment:
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:8000}
     ports:
       - "5173:5173"
-    environment:
-      - VITE_API_URL=${VITE_API_URL}
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
     networks:
       - app-net
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
 
 networks:
   app-net:
     driver: bridge
 
-
 volumes:
   pgdata:
+    driver: local
   miniodata:
+    driver: local
   clamdata:
+    driver: local
+  backend_uploads:
+    driver: local
