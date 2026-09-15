@@ -16,8 +16,8 @@ cursor = connection.cursor()
 # RUN SCHEMA.SQL TO CREATE ALL TABLES
 # ============================================================
 
-print("Running schema.sql to create all required tables...")
-with open('sql/schema.sql', 'r') as f:
+print("Running SIH_DATABASE.sql to create all required tables...")
+with open('../database/SIH_DATABASE.sql', 'r') as f:
     schema_sql = f.read()
     cursor.execute(schema_sql)
     connection.commit()
