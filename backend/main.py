@@ -8,7 +8,6 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 
 import jwt
-import easyocr
 from fastapi import FastAPI, Depends, HTTPException, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
