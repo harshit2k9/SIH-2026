@@ -566,13 +566,13 @@ function App() {
           <div className="login-brand">
             <div className="brand-icon">S</div>
             <div>
-              <h2>SIH26 SecureDocs</h2>
+              <h2>DocVault</h2>
               <span>SECURE DOCUMENT PLATFORM</span>
             </div>
           </div>
           <div className="login-card">
             <div className="login-heading">
-              <span className="eyebrow">SIH26 DIGITAL SECURITY</span>
+              <span className="eyebrow">DocVault SECURE PLATFORM</span>
               <h1>Protect. Verify. Access.</h1>
               <p>
                 A secure platform for managing, tracking, and accessing sensitive documents with
@@ -603,7 +603,7 @@ function App() {
         <div className="login-container">
           <div className="login-card">
             <h1>Administrator Login</h1>
-            <p className="subtitle">SIH26 Identity Review Console</p>
+            <p className="subtitle">DocVault Identity Review Console</p>
             <form onSubmit={handleAdminLogin}>
               <div className="form-group">
                 <label>Admin Email</label>
@@ -634,7 +634,7 @@ function App() {
           <div className="login-brand">
             <div className="brand-icon">S</div>
             <div>
-              <h2>SIH26 SecureDocs</h2>
+              <h2>DocVault</h2>
               <span>SECURE DOCUMENT PLATFORM</span>
             </div>
           </div>
@@ -695,7 +695,7 @@ function App() {
         <div className="login-container" style={{ maxWidth: "650px" }}>
           <div className="login-card">
             <h1>Create Account</h1>
-            <p className="subtitle">SIH26 Secure Digital Document Management System</p>
+            <p className="subtitle">DocVault Secure Document Management System</p>
             <form onSubmit={handleRegister}>
               <h3>Personal Information</h3>
               <div className="form-group">
@@ -933,8 +933,8 @@ function App() {
         <div className="sidebar-brand">
           <div className="brand-icon small">S</div>
           <div>
-            <h2>SecureDocs</h2>
-            <span>SIH26 PLATFORM</span>
+            <h2>DocVault</h2>
+            <span>DocVault PLATFORM</span>
           </div>
         </div>
         <div className="sidebar-user">
@@ -1003,7 +1003,7 @@ function App() {
       <main className="main-content">
         <header className="topbar">
           <div>
-            <div className="breadcrumb">SecureDocs / {activeSection}</div>
+            <div className="breadcrumb">DocVault / {activeSection}</div>
             <h1>{activeSection === "Viewer" ? "Document Viewer" : activeSection}</h1>
           </div>
           <div className="topbar-right">
@@ -1017,7 +1017,7 @@ function App() {
           <div className="page-content">
             <div className="welcome-banner">
               <div>
-                <span className="eyebrow">SIH26 SECURE WORKSPACE</span>
+                <span className="eyebrow">DocVault SECURE WORKSPACE</span>
                 <h2>Welcome, {currentUser?.full_name || email}.</h2>
                 <p>You are securely authenticated with identity verification & MFA active.</p>
               </div>
@@ -1169,18 +1169,104 @@ function App() {
 
         {activeSection === "Upload" && (
           <div className="page-content">
-            <div className="panel" style={{ maxWidth: "600px", margin: "0 auto" }}>
-              <h2>Upload Document</h2>
+            <div className="panel" style={{ maxWidth: "700px", margin: "0 auto" }}>
+              <h2>Upload Document for OCR Processing</h2>
+              <p style={{ color: "var(--text-muted)", marginBottom: "24px" }}>
+                Upload legal documents (JPG, PNG, PDF) for automatic text extraction and AI analysis.
+              </p>
+              
               <div className="form-group" style={{ marginTop: "24px" }}>
-                <label>Select File</label>
-                <input type="file" onChange={(e) => { if (e.target.files?.[0]) setSelectedFile(e.target.files[0]); }} />
+                <label>Select Document</label>
+                <input 
+                  type="file" 
+                  accept=".jpg,.jpeg,.png,.pdf"
+                  onChange={(e) => { if (e.target.files?.[0]) setSelectedFile(e.target.files[0]); }} 
+                  disabled={uploading}
+                />
               </div>
+              
               {selectedFile && (
-                <button className="primary-login-button" style={{ marginTop: "16px" }} onClick={() => setUploadSuccess(true)}>
-                  Upload File
-                </button>
+                <div style={{ marginTop: "16px", padding: "16px", background: "rgba(59, 130, 246, 0.1)", borderRadius: "var(--radius-md)" }}>
+                  <strong>Selected:</strong> {selectedFile.name} ({Math.round(selectedFile.size / 1024)} KB)
+                </div>
               )}
-              {uploadSuccess && <p style={{ color: "var(--accent-emerald)", marginTop: "16px" }}>✓ Document uploaded successfully!</p>}
+              
+              {uploading && (
+                <div style={{ marginTop: "16px" }}>
+                  <div style={{ height: "8px", background: "rgba(255,255,255,0.1)", borderRadius: "4px", overflow: "hidden" }}>
+                    <div style={{ width: `${uploadProgress}%`, height: "100%", background: "var(--primary-500)", transition: "width 0.3s" }}></div>
+                  </div>
+                  <p style={{ textAlign: "center", marginTop: "8px", color: "var(--text-muted)" }}>Processing document... {uploadProgress}%</p>
+                </div>
+              )}
+              
+              <button 
+                className="primary-login-button" 
+                style={{ marginTop: "20px", width: "100%" }} 
+                onClick={async () => {
+                  if (!selectedFile) return;
+                  
+                  setUploading(true);
+                  setUploadProgress(10);
+                  
+                  const formData = new FormData();
+                  formData.append("file", selectedFile);
+                  
+                  try {
+                    setUploadProgress(30);
+                    
+                    const response = await fetch(`${API_BASE_URL}/api/documents/upload`, {
+                      method: "POST",
+                      body: formData,
+                    });
+                    
+                    setUploadProgress(70);
+                    
+                    if (!response.ok) {
+                      const error = await response.json();
+                      throw new Error(error.detail || "Upload failed");
+                    }
+                    
+                    const result = await response.json();
+                    setUploadProgress(100);
+                    
+                    console.log("Upload result:", result);
+                    setUploadSuccess(true);
+                    
+                    // Reset after 3 seconds
+                    setTimeout(() => {
+                      setUploadSuccess(false);
+                      setSelectedFile(null);
+                      setUploadProgress(0);
+                    }, 3000);
+                    
+                  } catch (error: any) {
+                    console.error("Upload error:", error);
+                    alert(`Upload failed: ${error.message}`);
+                    setUploadSuccess(false);
+                  } finally {
+                    setUploading(false);
+                  }
+                }}
+                disabled={!selectedFile || uploading}
+              >
+                {uploading ? "Processing..." : "Upload & Extract Text"}
+              </button>
+              
+              {uploadSuccess && (
+                <div style={{ 
+                  marginTop: "20px", 
+                  padding: "20px", 
+                  background: "rgba(16, 185, 129, 0.15)", 
+                  borderRadius: "var(--radius-md)",
+                  border: "1px solid var(--accent-emerald)"
+                }}>
+                  <p style={{ color: "var(--accent-emerald)", fontWeight: "bold" }}>✓ Document uploaded and OCR completed!</p>
+                  <p style={{ color: "var(--text-muted)", fontSize: "14px", marginTop: "8px" }}>
+                    Text has been extracted and stored. You can retrieve it using the document ID.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}
