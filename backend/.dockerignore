@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+*.db
+.git
+.gitignore
+.env
+*.md
+keys/
+static/
+templates/
+scripts/
