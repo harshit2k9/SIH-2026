@@ -17,7 +17,8 @@ cursor = connection.cursor()
 # ============================================================
 
 print("Running SIH_DATABASE.sql to create all required tables...")
-with open('../database/SIH_DATABASE.sql', 'r') as f:
+# Use the SQL file that's now in the backend directory (copied from root database folder)
+with open('SIH_DATABASE.sql', 'r') as f:
     schema_sql = f.read()
     cursor.execute(schema_sql)
     connection.commit()
