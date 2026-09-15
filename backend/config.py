@@ -1,20 +1,29 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import computed_field
+import os
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # --- PostgreSQL Components ---
-    POSTGRES_USER: str
-    POSTGRES_PASSWORD: str
-    POSTGRES_DB: str
-    POSTGRES_SERVER: str = "postgres"  # Defaults to Docker service name
+    # Support both individual vars and full DATABASE_URL for cloud deployments (Render, etc.)
+    DATABASE_URL: str | None = None  # Full connection string (e.g., from Render)
+    POSTGRES_USER: str | None = None
+    POSTGRES_PASSWORD: str | None = None
+    POSTGRES_DB: str | None = None
+    POSTGRES_SERVER: str | None = None
     POSTGRES_PORT: int = 5432
 
     @computed_field
     @property
-    def DATABASE_URL(self) -> str:
+    def DATABASE_URL_COMPUTED(self) -> str:
+        # If DATABASE_URL is provided directly (e.g., from Render), use it
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
+        # Otherwise build from individual components
+        if not all([self.POSTGRES_USER, self.POSTGRES_PASSWORD, self.POSTGRES_DB, self.POSTGRES_SERVER]):
+            raise ValueError("Either DATABASE_URL or all POSTGRES_* variables must be set")
         return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
     SQLALCHEMY_DATABASE_URL: str = "sqlite:///./sih26.db"
