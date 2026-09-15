@@ -51,8 +51,8 @@ class Settings(BaseSettings):
 
     # --- MinIO / S3-compatible storage ---
     MINIO_ENDPOINT_URL: str = "http://minio:9000"
-    MINIO_ROOT_USER: str
-    MINIO_ROOT_PASSWORD: str
+    MINIO_ROOT_USER: str = "minio_admin"
+    MINIO_ROOT_PASSWORD: str = "minio_secure_password_2025"
     
     MINIO_BUCKET: str = "legal-documents"
     
