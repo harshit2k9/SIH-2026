@@ -30,7 +30,13 @@ MANIFEST
 # Environment
 .env
 .env.local
-.env.*
+.env.*.local
+!.env.example
+!.env.production.example
+
+# Production environment (NEVER commit)
+.env.production
+.env.prod
 
 # Editors
 .vscode/
