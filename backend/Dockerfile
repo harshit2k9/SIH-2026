@@ -36,7 +36,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
 # Copy and install frontend dependencies
-COPY ../frontend/package*.json ./frontend/
+COPY frontend/package*.json ./frontend/
 WORKDIR /usr/src/app/frontend
 RUN npm install
 
