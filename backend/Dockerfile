@@ -3,6 +3,7 @@ FROM python:3.11-slim
 # Install system libraries and build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    curl \
     libgl1 \
     libegl1 \
     libgles2 \
@@ -24,8 +25,7 @@ RUN pip install --no-cache-dir torch torchvision --index-url https://download.py
 # Install remaining app dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-# Pre-download EasyOCR models into the default user directory
-RUN python -c "import easyocr; easyocr.Reader(['en', 'hi'], gpu=False)"
+RUN python -c "import easyocr; easyocr.Reader(['en', 'hi'], download_enabled=True)"
 
 COPY . .
 
