@@ -41,16 +41,29 @@ LIVENESS_SESSIONS = {}
 LOGIN_CHALLENGES = {}
 
 # =========================================================
-# OCR ENGINE (PaddleOCR)
+# OCR ENGINE (PaddleOCR) - LAZY LOADING
 # =========================================================
 
-logger.info("Loading PaddleOCR engine...")
-try:
-    ocr_engine = PaddleOCR(use_textline_orientation=True, lang="en")
-    logger.info("PaddleOCR loaded successfully!")
-except Exception as e:
-    logger.warning(f"PaddleOCR failed to load: {e}. OCR features will be unavailable.")
-    ocr_engine = None
+ocr_engine = None
+ocr_loaded = False
+
+def get_ocr_engine():
+    """Lazy load PaddleOCR only when needed"""
+    global ocr_engine, ocr_loaded
+    
+    if ocr_loaded:
+        return ocr_engine
+    
+    logger.info("Loading PaddleOCR engine...")
+    try:
+        ocr_engine = PaddleOCR(use_textline_orientation=True, lang="en")
+        logger.info("PaddleOCR loaded successfully!")
+        ocr_loaded = True
+        return ocr_engine
+    except Exception as e:
+        logger.warning(f"PaddleOCR failed to load: {e}. OCR features will be unavailable.")
+        ocr_loaded = True
+        return None
 
 # =========================================================
 # DATABASE MODELS FOR DOCUMENT AI
@@ -112,11 +125,13 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 def extract_text_with_ocr(file_path: str) -> str:
     """Extract text from document using PaddleOCR"""
-    if ocr_engine is None:
+    engine = get_ocr_engine()
+    
+    if engine is None:
         return "OCR engine not available"
 
     try:
-        results = ocr_engine.predict(file_path)
+        results = engine.predict(file_path)
         extracted_text = []
 
         for page in results:
@@ -140,7 +155,7 @@ async def lifespan(app: FastAPI):
 
 
 # App
-app = FastAPI(title="DocVault - Secure Legal Document AI", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="DocVault - Secure Document Management", version="1.0.0", lifespan=lifespan)
 
 # CORS
 CORS_ORIGINS = os.getenv(
