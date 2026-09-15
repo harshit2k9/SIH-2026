@@ -1,12 +1,3 @@
-__pycache__/
-*.pyc
-*.pyo
-*.db
-.git
-.gitignore
-.env
-*.md
-keys/
 templates/
 scripts/
 node_modules/

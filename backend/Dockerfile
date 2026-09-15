@@ -25,6 +25,11 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 # Install CPU-only PyTorch upfront (creates a permanent, cached layer)
 RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
+# Copy and install frontend dependencies
+COPY frontend/package*.json ./frontend/
+WORKDIR /usr/src/app/frontend
+RUN npm install
+
 # Install backend dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
