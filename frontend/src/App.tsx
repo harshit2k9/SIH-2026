@@ -83,6 +83,9 @@ const rolePermissions: Record<Role, string[]> = {
   "Public / External User": ["Dashboard", "Search"],
 };
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+
+
 function App() {
   const [page, setPage] = useState<
     "home" | "login" | "admin_login" | "register" | "mfa_setup" | "mfa" | "dashboard"
@@ -146,7 +149,7 @@ function App() {
   useEffect(() => {
     const loadActivities = async () => {
       try {
-        const response = await fetch("/api/audit-logs");
+        const response = await fetch(`${API_BASE_URL}/api/audit-logs`);
         if (response.ok) {
           const data: Activity[] = await response.json();
           setActivities(data);
@@ -161,7 +164,7 @@ function App() {
   useEffect(() => {
     const loadDocuments = async () => {
       try {
-        const response = await fetch("/api/documents");
+        const response = await fetch(`${API_BASE_URL}/api/documents`);
         if (response.ok) {
           const data: Document[] = await response.json();
           setDocuments(data);
@@ -175,11 +178,11 @@ function App() {
 
   const loadAdminReviews = async () => {
     try {
-      const pendingRes = await fetch("/admin/api/pending-users");
+      const pendingRes = await fetch(`${API_BASE_URL}/admin/api/pending-users`);
       if (pendingRes.ok) {
         setPendingUsers(await pendingRes.json());
       }
-      const reviewedRes = await fetch("/admin/api/reviewed-users");
+      const reviewedRes = await fetch(`${API_BASE_URL}/admin/api/reviewed-users`);
       if (reviewedRes.ok) {
         setReviewedUsers(await reviewedRes.json());
       }
@@ -276,7 +279,7 @@ function App() {
       frames.forEach((frame, index) => {
         formData.append("frames", frame, `frame_${index}.jpg`);
       });
-      const response = await fetch("/api/liveness/check", {
+      const response = await fetch(`${API_BASE_URL}/api/liveness/check`, {
         method: "POST",
         body: formData,
       });
@@ -330,7 +333,7 @@ function App() {
     formData.append("liveness_token", livenessToken);
 
     try {
-      const response = await fetch("/api/auth/register", {
+      const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: "POST",
         body: formData,
       });
@@ -351,7 +354,7 @@ function App() {
   const handleMfaSetupVerify = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      const response = await fetch("/api/auth/mfa/setup", {
+      const response = await fetch(`${API_BASE_URL}/api/auth/mfa/setup`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({ user_uid: userUid, code: otp }),
@@ -374,7 +377,7 @@ function App() {
       return;
     }
     try {
-      const response = await fetch("/api/auth/login", {
+      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({ email, password }),
@@ -407,7 +410,7 @@ function App() {
       return;
     }
     try {
-      const response = await fetch("/api/auth/mfa/verify", {
+      const response = await fetch(`${API_BASE_URL}/api/auth/mfa/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({ challenge_token: challengeToken, code: otp }),
@@ -1054,13 +1057,13 @@ function App() {
                     <p>Similarity Score: {selectedReviewUser.face_similarity_score ?? "N/A"}</p>
                     <div className="actions" style={{ display: "flex", gap: "12px", marginTop: "20px" }}>
                       <button className="primary-login-button" style={{ flex: 1, background: "var(--accent-emerald)" }} onClick={async () => {
-                        await fetch(`/admin/user/${selectedReviewUser.user_uid}/approve`, { method: "POST" });
+                        await fetch(`${API_BASE_URL}/admin/user/${selectedReviewUser.user_uid}/approve`, { method: "POST" });
                         alert("User Identity Approved!");
                         setSelectedReviewUser(null);
                         loadAdminReviews();
                       }}>✓ Approve Identity</button>
                       <button className="primary-login-button" style={{ flex: 1, background: "var(--accent-rose)" }} onClick={async () => {
-                        await fetch(`/admin/user/${selectedReviewUser.user_uid}/reject`, { method: "POST" });
+                        await fetch(`${API_BASE_URL}/admin/user/${selectedReviewUser.user_uid}/reject`, { method: "POST" });
                         alert("User Registration Rejected.");
                         setSelectedReviewUser(null);
                         loadAdminReviews();
