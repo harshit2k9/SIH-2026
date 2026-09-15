@@ -1,4 +1,5 @@
 FROM python:3.11-slim
+FROM node:20-alpine
 
 # Install Node.js 20.x for building frontend
 RUN rm -rf /var/lib/apt/lists/* && \
@@ -34,6 +35,8 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # Install CPU-only PyTorch upfront (creates a permanent, cached layer)
 RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+COPY package*.json ./
+RUN npm install
 
 # Copy and install frontend dependencies
 COPY ../frontend/package*.json ./frontend/
@@ -50,6 +53,7 @@ RUN python -c "import easyocr; easyocr.Reader(['en', 'hi'], download_enabled=Tru
 
 # Copy application code (excluding files in .dockerignore)
 COPY . .
+EXPOSE 5173
 
 # Build frontend for production
 WORKDIR /usr/src/app/frontend
@@ -65,4 +69,8 @@ EXPOSE 8000
 # On Render, migrations run at runtime when DB is available
 RUN python migrate_db.py || echo "Migration step completed or skipped (will run at container start)"
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Schema verification moved to runtime (Render doesn't support DB access during build)
+# The migrate_db.py script handles schema creation at container startup
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--workers", "2"]
+CMD ["npm", "run", "dev", "--", "--host"]
