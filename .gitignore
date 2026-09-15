@@ -1,28 +1,4 @@
 ```
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# Dependencies
-venv/
-.venv/
-.env
-.env.local
-*.env.*
-
-# Logs
-*.log
-
-# Editor
-.vscode/
-.idea/
-*.swp
-*.swo
-*.tmp
-
-# Build artifacts
-build/
-dist/
+# Docker
+.dockerignore
 ```
