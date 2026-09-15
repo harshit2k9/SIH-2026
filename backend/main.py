@@ -21,6 +21,7 @@ from config import settings
 from services.face_match import compare_faces
 from services.liveness import analyze_blink
 from services.mfa import generate_mfa_secret, create_provisioning_uri, create_qr_code_base64, verify_totp
+from routers.documents import router as documents_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -57,6 +58,9 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
 )
+
+# Include routers
+app.include_router(documents_router, prefix="/api")
 
 # Health check
 @app.get("/health")
