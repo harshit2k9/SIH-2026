@@ -255,83 +255,105 @@ async def mfa_verify(
 # Documents
 @app.get("/api/documents")
 async def get_documents(db: Session = Depends(get_db)):
-    docs = db.execute(
-        text("SELECT id, title as name, document_type as type, document_number as idCode, created_at as updated FROM public.documents LIMIT 50")
-    ).fetchall()
-    
-    return [
-        {
-            "id": str(d.id),
-            "name": d.name,
-            "type": d.type,
-            "status": "Verified",
-            "pages": 10,
-            "idCode": d.idCode,
-            "updated": str(d.updated) if d.updated else ""
-        }
-        for d in docs
-    ]
-
+    try:
+        docs = db.execute(
+            text("SELECT id, title as name, document_type as type, document_number as idCode, created_at as updated FROM public.documents LIMIT 50")
+        ).fetchall()
+        return [
+                {
+                    "id": str(d.id),
+                    "name": d.name,
+                    "type": d.type,
+                    "status": "Verified",
+                    "pages": 10,
+                    "idCode": d.idCode,
+                    "updated": str(d.updated) if d.updated else ""
+                }
+                for d in docs
+            ]
+        except Exception as e:
+        # Return empty list if table doesn't exist yet
+        print(f"Documents table not available: {e}")
+        return []
 # Audit logs
 @app.get("/api/audit-logs")
 async def get_audit_logs(db: Session = Depends(get_db)):
-    logs = db.execute(
-        text("SELECT action as title, actor_id as description, created_at as time FROM public.chain_of_custody_logs ORDER BY created_at DESC LIMIT 20")
-    ).fetchall()
-    
-    return [
-        {
-            "title": l.title,
-            "description": f"Actor: {l.description}",
-            "time": str(l.time) if l.time else ""
-        }
-        for l in logs
-    ]
+    try:
+        logs = db.execute(
+            text("SELECT action as title, actor_id as description, created_at as time FROM public.chain_of_custody_logs ORDER BY created_at DESC LIMIT 20")
+        ).fetchall()
+         return [
+                {
+                    "title": l.title,
+                    "description": f"Actor: {l.description}",
+                    "time": str(l.time) if l.time else ""
+                }
+                for l in logs
+            ]
+    except Exception as e:
+        # Return empty list if table doesn't exist yet
+        print(f"Audit logs table not available: {e}")
+        return []]
 
 # Admin endpoints
 @app.get("/admin/api/pending-users")
 async def pending_users(db: Session = Depends(get_db)):
-    users = db.execute(
-        text("SELECT id, full_name, email FROM public.users WHERE is_active = false LIMIT 50")
-    ).fetchall()
-    
-    return [
-        {
-            "user_uid": str(u.id),
-            "full_name": u.full_name,
-            "email": u.email,
-            "face_similarity_score": 0.0,
-            "admin_review_status": "PENDING"
-        }
-        for u in users
-    ]
+    try:
+        users = db.execute(
+            text("SELECT id, full_name, email FROM public.users WHERE is_active = false LIMIT 50")
+        ).fetchall()        
+        return [
+                {
+                    "user_uid": str(u.id),
+                    "full_name": u.full_name,
+                    "email": u.email,
+                    "face_similarity_score": 0.0,
+                    "admin_review_status": "PENDING"
+                }
+                for u in users
+            ]
+    except Exception as e:
+        print(f"Pending users query failed: {e}")
+        return []
 
 @app.get("/admin/api/reviewed-users")
 async def reviewed_users(db: Session = Depends(get_db)):
-    users = db.execute(
-        text("SELECT id, full_name FROM public.users WHERE is_active = true LIMIT 50")
-    ).fetchall()
-    
-    return [
-        {
-            "user_uid": str(u.id),
-            "full_name": u.full_name,
-            "admin_review_status": "APPROVED"
-        }
-        for u in users
-    ]
+    try:
+        users = db.execute(
+            text("SELECT id, full_name FROM public.users WHERE is_active = true LIMIT 50")
+        ).fetchall()
+        
+         return [
+                {
+                    "user_uid": str(u.id),
+                    "full_name": u.full_name,
+                    "admin_review_status": "APPROVED"
+                }
+                for u in users
+            ]
+    except Exception as e:
+        print(f"Reviewed users query failed: {e}")
+        return []
 
 @app.post("/admin/user/{user_uid}/approve")
 async def approve_user(user_uid: str, db: Session = Depends(get_db)):
-    db.execute(text("UPDATE public.users SET is_active = true WHERE id = :id"), {"id": user_uid})
-    db.commit()
-    return {"status": "approved"}
+    try:
+        db.execute(text("UPDATE public.users SET is_active = true WHERE id = :id"), {"id": user_uid})
+        db.commit()
+        return {"status": "approved"}
+    except Exception as e:
+        print(f"Approve user failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/admin/user/{user_uid}/reject")
 async def reject_user(user_uid: str, db: Session = Depends(get_db)):
-    db.execute(text("UPDATE public.users SET is_active = false WHERE id = :id"), {"id": user_uid})
-    db.commit()
-    return {"status": "rejected"}
+    try:
+        db.execute(text("UPDATE public.users SET is_active = false WHERE id = :id"), {"id": user_uid})
+        db.commit()
+        return {"status": "rejected"}
+    except Exception as e:
+        print(f"Reject user failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # SERVE REACT FRONTEND - MUST BE LAST
 frontend_dist = BASE_DIR.parent / "frontend" / "dist"
