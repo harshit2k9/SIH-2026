@@ -30,9 +30,6 @@ RUN python -c "import easyocr; easyocr.Reader(['en', 'hi'], download_enabled=Tru
 # Copy application code (excluding files in .dockerignore)
 COPY . .
 
-# Copy database schema from root directory to /tmp
-COPY ../database/SIH_DATABASE.sql /tmp/SIH_DATABASE.sql
-
 # Run database migrations before starting the server
 # Provide default env vars for build-time migration (will be overridden at runtime)
 ENV MINIO_ROOT_USER=minio_admin
@@ -45,13 +42,13 @@ ENV POSTGRES_PORT=5432
 
 RUN python migrate_db.py || echo "Migration completed or skipped"
 
-# Ensure schema tables exist (idempotent) - using database schema from /tmp
+# Ensure schema tables exist (idempotent) - using schema file copied with the app
 RUN python -c "\
 import psycopg2; \
 from config import settings; \
 conn = psycopg2.connect(settings.DATABASE_URL_COMPUTED); \
 cur = conn.cursor(); \
-cur.execute(open('/tmp/SIH_DATABASE.sql').read()); \
+cur.execute(open('SIH_DATABASE.sql').read()); \
 conn.commit(); \
 cur.close(); \
 conn.close(); \
