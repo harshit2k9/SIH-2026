@@ -31,13 +31,13 @@ COPY . .
 # Run database migrations before starting the server
 RUN python migrate_db.py || echo "Migration completed or skipped"
 
-# Ensure schema tables exist (idempotent)
+# Ensure schema tables exist (idempotent) - using database folder from root
 RUN python -c "\
 import psycopg2; \
 from config import settings; \
 conn = psycopg2.connect(settings.DATABASE_URL_COMPUTED); \
 cur = conn.cursor(); \
-cur.execute(open('sql/schema.sql').read()); \
+cur.execute(open('../database/SIH_DATABASE.sql').read()); \
 conn.commit(); \
 cur.close(); \
 conn.close(); \
