@@ -58,7 +58,7 @@ app = FastAPI(title="SIH26 SecureDocs", version="1.0.0", lifespan=lifespan)
 # CORS
 CORS_ORIGINS = os.getenv(
     "CORS_ORIGINS",
-    "https://*.app.github.dev,http://localhost:5173,http://127.0.0.1:5173",
+    "https://sih-2026-mer1.onrender.com,https://*.app.github.dev,http://localhost:5173,http://127.0.0.1:5173",
 )
 app.add_middleware(
     CORSMiddleware,
