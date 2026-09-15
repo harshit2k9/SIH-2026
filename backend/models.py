@@ -17,7 +17,8 @@ class User(Base):
     aadhaar_number = Column(String, nullable=False)
     aadhaar_image = Column(String, nullable=False)
     live_photo = Column(String, nullable=False)
-    
+    intended_role = Column(String, default="citizen") 
+
     # Face Verification & Review Status
     face_verified = Column(Boolean, default=False)
     face_similarity_score = Column(Float, nullable=True)
@@ -57,8 +58,3 @@ class OperationalUser(Base):
     
     # Optional link to the base registration user if they have a login
     registration_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)"""
-
-class User(Base):
-    __tablename__ = "registration_users"
-    # ... existing fields ...
-    intended_role = Column(String, default="citizen")  # NEW
