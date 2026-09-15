@@ -9,7 +9,7 @@ import logging
 import asyncio
 
 # PostgreSQL Synchronous SQLAlchemy URL
-SQLALCHEMY_DATABASE_URL = settings.DATABASE_URL_COMPUTED
+SQLALCHEMY_DATABASE_URL = settings.DATABASE_URL
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
@@ -35,7 +35,7 @@ async def init_db_pool(max_retries: int = 5, delay: float = 2.0) -> None:
     for attempt in range(1, max_retries + 1):
         try:                   
             _pool = await asyncpg.create_pool(
-                dsn=settings.DATABASE_URL_COMPUTED,
+                dsn=settings.DATABASE_URL,
                 min_size=settings.DB_POOL_MIN_SIZE,
                 max_size=settings.DB_POOL_MAX_SIZE,
                 command_timeout=settings.DB_COMMAND_TIMEOUT,

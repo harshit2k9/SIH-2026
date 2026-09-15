@@ -48,11 +48,8 @@ async def lifespan(app: FastAPI):
 # App
 app = FastAPI(title="SIH26 SecureDocs", version="1.0.0", lifespan=lifespan)
 
-# CORS - Support Render and other deployment environments
-CORS_ORIGINS = os.getenv(
-    "CORS_ORIGINS", 
-    "https://*.app.github.dev,http://localhost:5173,http://127.0.0.1:5173,https://sddms-frontend.onrender.com"
-)
+# CORS
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "https://*.app.github.dev,http://localhost:5173,http://127.0.0.1:5173")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS.split(","),
@@ -68,11 +65,6 @@ app.include_router(documents_router, prefix="/api")
 @app.get("/health")
 def health():
     return {"status": "healthy"}
-
-# Liveness check endpoint for Render
-@app.get("/api/liveness")
-def liveness():
-    return {"status": "alive"}
 
 # Liveness check
 @app.post("/api/liveness/check")
@@ -264,7 +256,7 @@ async def mfa_verify(
 @app.get("/api/documents")
 async def get_documents(db: Session = Depends(get_db)):
     docs = db.execute(
-        text("SELECT id, title as name, document_type as type, id as idCode, status, created_at as updated FROM public.documents LIMIT 50")
+        text("SELECT id, title as name, document_type as type, document_number as idCode, created_at as updated FROM public.documents LIMIT 50")
     ).fetchall()
     
     return [
@@ -284,7 +276,7 @@ async def get_documents(db: Session = Depends(get_db)):
 @app.get("/api/audit-logs")
 async def get_audit_logs(db: Session = Depends(get_db)):
     logs = db.execute(
-        text("SELECT action as title, actor_id as description, created_at as time FROM public.audit_log ORDER BY created_at DESC LIMIT 20")
+        text("SELECT action as title, actor_id as description, created_at as time FROM public.chain_of_custody_logs ORDER BY created_at DESC LIMIT 20")
     ).fetchall()
     
     return [
@@ -342,11 +334,11 @@ async def reject_user(user_uid: str, db: Session = Depends(get_db)):
     return {"status": "rejected"}
 
 # SERVE REACT FRONTEND - MUST BE LAST
-frontend_dist = BASE_DIR / "static"
+frontend_dist = BASE_DIR.parent / "frontend" / "dist"
 
-if frontend_dist.exists() and any(frontend_dist.iterdir()):
+if frontend_dist.exists():
     app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="frontend")
-    logger.info("✅ React frontend mounted from static directory")
+    logger.info("✅ React frontend mounted")
 else:
     @app.get("/")
     def root():

@@ -9,20 +9,8 @@ Base.metadata.create_all(bind=engine)
 # CONNECT POSTGRESQL
 # ============================================================
 
-connection = psycopg2.connect(settings.DATABASE_URL_COMPUTED)
+connection = psycopg2.connect(settings.DATABASE_URL)
 cursor = connection.cursor()
-
-# ============================================================
-# RUN SCHEMA.SQL TO CREATE ALL TABLES
-# ============================================================
-
-print("Running SIH_DATABASE.sql to create all required tables...")
-# Use the SQL file that's now in the backend directory (copied from root database folder)
-with open('SIH_DATABASE.sql', 'r') as f:
-    schema_sql = f.read()
-    cursor.execute(schema_sql)
-    connection.commit()
-    print("✅ Schema tables created successfully")
 
 # ============================================================
 # EXISTING USER COLUMNS

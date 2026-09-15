@@ -1,33 +1,20 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import computed_field
-import os
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # --- Environment ---
-    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
-    RENDER: str = os.getenv("RENDER", "false")  # Set to 'true' on Render
-
     # --- PostgreSQL Components ---
-    # Support both individual vars and full DATABASE_URL for cloud deployments (Render, etc.)
-    DATABASE_URL: str | None = None  # Full connection string (e.g., from Render)
-    POSTGRES_USER: str | None = None
-    POSTGRES_PASSWORD: str | None = None
-    POSTGRES_DB: str | None = None
-    POSTGRES_SERVER: str | None = None
+    POSTGRES_USER: str
+    POSTGRES_PASSWORD: str
+    POSTGRES_DB: str
+    POSTGRES_SERVER: str = "postgres"  # Defaults to Docker service name
     POSTGRES_PORT: int = 5432
 
     @computed_field
     @property
-    def DATABASE_URL_COMPUTED(self) -> str:
-        # If DATABASE_URL is provided directly (e.g., from Render), use it
-        if self.DATABASE_URL:
-            return self.DATABASE_URL
-        # Otherwise build from individual components
-        if not all([self.POSTGRES_USER, self.POSTGRES_PASSWORD, self.POSTGRES_DB, self.POSTGRES_SERVER]):
-            raise ValueError("Either DATABASE_URL or all POSTGRES_* variables must be set")
+    def DATABASE_URL(self) -> str:
         return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
     SQLALCHEMY_DATABASE_URL: str = "sqlite:///./sih26.db"
@@ -40,19 +27,16 @@ class Settings(BaseSettings):
     DB_STATEMENT_CACHE_SIZE: int = 1024
 
     # --- JWT ---
-    # Support both local keys and Render secret files (/etc/secrets/)
-    _is_render = os.getenv("RENDER") == "true"
-    _keys_dir = "/etc/secrets" if _is_render else "keys"
-    JWT_PUBLIC_KEY_PATH: str = os.getenv("JWT_PUBLIC_KEY_PATH", f"{_keys_dir}/public.pem")
-    JWT_PRIVATE_KEY_PATH: str = os.getenv("JWT_PRIVATE_KEY_PATH", f"{_keys_dir}/private.pem")
+    JWT_PUBLIC_KEY_PATH: str = "keys/public.pem"
+    JWT_PRIVATE_KEY_PATH: str = "keys/private.pem"  # ✅ ADDED: Required for /api/auth/token
     JWT_ALGORITHM: str = "RS256"
     JWT_AUDIENCE: str = "sddms-api"
     JWT_ISSUER: str = "sddms-auth-service"
 
     # --- MinIO / S3-compatible storage ---
     MINIO_ENDPOINT_URL: str = "http://minio:9000"
-    MINIO_ROOT_USER: str = "minio_admin"
-    MINIO_ROOT_PASSWORD: str = "minio_secure_password_2025"
+    MINIO_ROOT_USER: str
+    MINIO_ROOT_PASSWORD: str
     
     MINIO_BUCKET: str = "legal-documents"
     
