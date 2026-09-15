@@ -264,7 +264,7 @@ async def mfa_verify(
 @app.get("/api/documents")
 async def get_documents(db: Session = Depends(get_db)):
     docs = db.execute(
-        text("SELECT id, title as name, document_type as type, document_number as idCode, created_at as updated FROM public.documents LIMIT 50")
+        text("SELECT id, title as name, document_type as type, id as idCode, status, created_at as updated FROM public.documents LIMIT 50")
     ).fetchall()
     
     return [
@@ -284,7 +284,7 @@ async def get_documents(db: Session = Depends(get_db)):
 @app.get("/api/audit-logs")
 async def get_audit_logs(db: Session = Depends(get_db)):
     logs = db.execute(
-        text("SELECT action as title, actor_id as description, created_at as time FROM public.chain_of_custody_logs ORDER BY created_at DESC LIMIT 20")
+        text("SELECT action as title, actor_id as description, created_at as time FROM public.audit_log ORDER BY created_at DESC LIMIT 20")
     ).fetchall()
     
     return [

@@ -28,4 +28,19 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN python -c "import easyocr; easyocr.Reader(['en', 'hi'], download_enabled=True)"
 COPY . .
 
+# Run database migrations before starting the server
+RUN python migrate_db.py || echo "Migration completed or skipped"
+
+# Ensure schema tables exist (idempotent)
+RUN python -c "\
+import psycopg2; \
+from config import settings; \
+conn = psycopg2.connect(settings.DATABASE_URL_COMPUTED); \
+cur = conn.cursor(); \
+cur.execute(open('sql/schema.sql').read()); \
+conn.commit(); \
+cur.close(); \
+conn.close(); \
+print('✅ Schema verified')"
+
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--workers", "2"]

@@ -10,16 +10,36 @@ __pycache__/
 .env.local
 *.env.*
 
-# Dependencies
-venv/
-.venv/
-lib/
-lib64/
-
 # Logs
 *.log
 
-# OS generated files
+# Temporary files
+*.tmp
+*.swp
+*.swo
+
+# Coverage
+.coverage
+coverage/
+htmlcov/
+
+# Dependencies
+node_modules/
+venv/
+.venv/
+.mypy_cache/
+.pytest_cache/
+
+# Build artifacts
+dist/
+build/
+target/
+
+# Editors
+.vscode/
+.idea/
+
+# System
 .DS_Store
 Thumbs.db
 ```
