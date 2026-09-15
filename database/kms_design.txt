@@ -1,0 +1,175 @@
+KMS ARCHITECTURE — ENVELOPE ENCRYPTION
+
+             DOCUMENT
+                │
+                ▼
+        Encryption Key
+             (DEK)
+                │
+                ▼
+       Encrypted Document
+                │
+                ▼
+            MinIO/S3
+
+
+        DEK is protected by
+                │
+                ▼
+       KMS Master Key (KEK)
+                │
+                ▼
+              KMS
+
+
+DEK → encrypts the actual document.
+KEK → protects the DEK.
+KMS → securely manages the encryption keys.
+MinIO/S3 → stores the encrypted document.
+PostgreSQL → stores document metadata and kms_key_id.
+
+
+STEP 2 — DOCUMENT ENCRYPTION FLOW
+
+1. User uploads a document (PDF/image).
+2. Backend generates a unique DEK (Data Encryption Key) for the document.
+3. The DEK encrypts the document.
+4. The encrypted document is stored in MinIO/S3.
+5. The DEK is encrypted/wrapped using the Vault Transit-managed key.
+6. PostgreSQL stores the document metadata, including kms_key_id and SHA-256 checksum.
+7. The actual secret encryption key is never stored as plaintext in PostgreSQL.
+
+UPLOAD FLOW:
+
+User
+  ↓
+Backend
+  ↓
+Generate DEK
+  ↓
+Encrypt Document
+  ↓
+Encrypted Document → MinIO/S3
+  ↓
+Protected DEK → KMS
+  ↓
+Metadata + kms_key_id + SHA-256 → PostgreSQL
+
+
+STEP 3 — KMS ACCESS CONTROL
+
+1. Only the authorized backend service can request encryption or decryption key operations from the KMS.
+
+2. Normal users must never have direct access to the KMS or its encryption keys.
+
+3. The backend must authenticate with the KMS using a secure service identity.
+
+4. Before requesting decryption of a document, the backend must verify the user's
+   role, department, and document access permissions using the project's ACL.
+
+5. If the user is not authorized, the backend must deny the request and must not
+   request the document's decryption key from the KMS.
+
+6. KMS permissions should follow the principle of least privilege:
+   the backend receives only the key operations it actually needs.
+
+7. KMS administrative operations such as creating, rotating, disabling, or
+   deleting keys should be restricted to authorized administrators.
+
+8. KMS credentials and secrets must never be stored in source code, PostgreSQL,
+   or GitHub.
+
+ACCESS DECISION:
+
+User
+  ↓
+Backend
+  ↓
+ACL check
+  ↓
+Authorized?
+  ├── NO  → DENY
+  └── YES → Request decryption operation from KMS
+
+
+STEP 4 — KEY ROTATION AND LIFECYCLE
+
+1. KMS keys must support periodic rotation to reduce the risk of long-term key exposure.
+
+2. A new key version is created when the encryption key is rotated.
+
+3. New documents should use the latest active key version.
+
+4. Existing documents encrypted with an older key version must remain decryptable.
+
+5. Old key versions must be retained as long as they are required to decrypt
+   existing documents.
+
+6. Old key versions should not be deleted immediately after rotation.
+
+7. When a key is compromised or suspected to be compromised, it should be
+   disabled/revoked according to the KMS recovery procedure.
+
+8. Key rotation and administrative key operations must be restricted to
+   authorized administrators.
+
+9. The database should continue to store the appropriate kms_key_id for each
+   document version so the system knows which KMS key is associated with it.
+
+KEY LIFECYCLE:
+
+Create
+  ↓
+Active
+  ↓
+Used for encryption
+  ↓
+Rotate
+  ↓
+New key becomes active
+  ↓
+Old key retained for existing documents
+  ↓
+Retire when no longer required
+
+STEP 5 — VAULT IMPLEMENTATION
+
+KMS Technology:
+HashiCorp Vault
+
+Secrets Engine:
+Transit
+
+Key Name:
+dms-document-key
+
+Key Type:
+AES-256-GCM (Vault Transit: aes256-gcm96)
+
+Key Properties:
+- Non-exportable
+- Deletion disabled
+- Encryption enabled
+- Decryption enabled
+- Automatic rotation: 30 days
+
+Implementation:
+
+Backend
+   ↓
+Vault Transit
+   ↓
+dms-document-key
+   ↓
+Encrypt / Decrypt
+   ↓
+Encrypted Document
+
+PostgreSQL stores:
+- kms_key_id
+- sha256_checksum
+
+PostgreSQL does NOT store:
+- actual encryption key
+- Vault root token
+- Vault credentials
