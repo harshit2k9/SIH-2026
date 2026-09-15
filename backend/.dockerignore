@@ -10,3 +10,5 @@ keys/
 templates/
 scripts/
 node_modules/
+dist/
+build/
