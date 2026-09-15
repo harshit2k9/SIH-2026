@@ -1,57 +1,25 @@
-```gitignore
+```
 # Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.Python
-env/
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Dependencies
 venv/
 .venv/
-.ENV
-.venv.bak/
-pip-log.txt
-pip-delete-this-directory.txt
+lib/
+lib64/
 
 # Logs
 *.log
 
-# Environment variables
-.env
-.env.local
-.env.*
-!.env.example
-
-# Coverage reports
-.coverage
-coverage/
-htmlcov/
-
-# Testing
-.pytest_cache/
-.hypothesis/
-.tox/
-
-# Build artifacts
-dist/
-build/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# IDE specific
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
 # OS generated files
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
 ```
