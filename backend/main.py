@@ -66,6 +66,11 @@ app.include_router(documents_router, prefix="/api")
 def health():
     return {"status": "healthy"}
 
+# Liveness check endpoint for Render
+@app.get("/api/liveness")
+def liveness():
+    return {"status": "alive"}
+
 # Liveness check
 @app.post("/api/liveness/check")
 async def check_liveness(frames: list[UploadFile] = File(...)):
