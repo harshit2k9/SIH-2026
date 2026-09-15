@@ -28,16 +28,28 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN python -c "import easyocr; easyocr.Reader(['en', 'hi'], download_enabled=True)"
 COPY . .
 
+# Copy database schema from root directory to /tmp
+COPY ../database/SIH_DATABASE.sql /tmp/SIH_DATABASE.sql
+
 # Run database migrations before starting the server
+# Provide default env vars for build-time migration (will be overridden at runtime)
+ENV MINIO_ROOT_USER=minio_admin
+ENV MINIO_ROOT_PASSWORD=minio_secure_password_2025
+ENV POSTGRES_USER=sddms_user
+ENV POSTGRES_PASSWORD=sddms_secure_password_2025
+ENV POSTGRES_DB=sddms_db
+ENV POSTGRES_SERVER=postgres
+ENV POSTGRES_PORT=5432
+
 RUN python migrate_db.py || echo "Migration completed or skipped"
 
-# Ensure schema tables exist (idempotent) - using database folder from root
+# Ensure schema tables exist (idempotent) - using database schema from /tmp
 RUN python -c "\
 import psycopg2; \
 from config import settings; \
 conn = psycopg2.connect(settings.DATABASE_URL_COMPUTED); \
 cur = conn.cursor(); \
-cur.execute(open('../database/SIH_DATABASE.sql').read()); \
+cur.execute(open('/tmp/SIH_DATABASE.sql').read()); \
 conn.commit(); \
 cur.close(); \
 conn.close(); \
