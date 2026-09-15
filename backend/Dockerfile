@@ -31,27 +31,10 @@ RUN python -c "import easyocr; easyocr.Reader(['en', 'hi'], download_enabled=Tru
 COPY . .
 
 # Run database migrations before starting the server
-# Provide default env vars for build-time migration (will be overridden at runtime)
-ENV MINIO_ROOT_USER=minio_admin
-ENV MINIO_ROOT_PASSWORD=minio_secure_password_2025
-ENV POSTGRES_USER=sddms_user
-ENV POSTGRES_PASSWORD=sddms_secure_password_2025
-ENV POSTGRES_DB=sddms_db
-ENV POSTGRES_SERVER=postgres
-ENV POSTGRES_PORT=5432
+# On Render, migrations run at runtime when DB is available
+RUN python migrate_db.py || echo "Migration step completed or skipped (will run at container start)"
 
-RUN python migrate_db.py || echo "Migration completed or skipped"
-
-# Ensure schema tables exist (idempotent) - using schema file copied with the app
-RUN python -c "\
-import psycopg2; \
-from config import settings; \
-conn = psycopg2.connect(settings.DATABASE_URL_COMPUTED); \
-cur = conn.cursor(); \
-cur.execute(open('SIH_DATABASE.sql').read()); \
-conn.commit(); \
-cur.close(); \
-conn.close(); \
-print('✅ Schema verified')"
+# Schema verification moved to runtime (Render doesn't support DB access during build)
+# The migrate_db.py script handles schema creation at container startup
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--workers", "2"]
