@@ -293,7 +293,7 @@ async def get_audit_logs(db: Session = Depends(get_db)):
     except Exception as e:
         # Return empty list if table doesn't exist yet
         print(f"Audit logs table not available: {e}")
-        return []]
+        return []
 
 # Admin endpoints
 @app.get("/admin/api/pending-users")
