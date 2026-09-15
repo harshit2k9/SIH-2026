@@ -26,6 +26,8 @@ RUN pip install --no-cache-dir torch torchvision --index-url https://download.py
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN python -c "import easyocr; easyocr.Reader(['en', 'hi'], download_enabled=True)"
+
+# Copy application code (excluding files in .dockerignore)
 COPY . .
 
 # Copy database schema from root directory to /tmp
