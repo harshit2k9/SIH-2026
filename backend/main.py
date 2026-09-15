@@ -1,10 +1,11 @@
 import logging
 import os
 import secrets
+import shutil
 import time
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import jwt
@@ -23,25 +24,126 @@ from services.mfa import (
     generate_mfa_secret,
     verify_totp,
 )
-from sqlalchemy import text
-from sqlalchemy.orm import Session
+from sqlalchemy import Column, DateTime, ForeignKey, String, Text, create_engine, text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import Session, declarative_base, sessionmaker
+from paddleocr import PaddleOCR
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parent
 
+# Suppress PaddleOCR verbose logs
+logging.getLogger("ppocr").setLevel(logging.ERROR)
+
 # In-memory stores
 LIVENESS_SESSIONS = {}
 LOGIN_CHALLENGES = {}
 
+# =========================================================
+# OCR ENGINE (PaddleOCR) - LAZY LOADING
+# =========================================================
 
-# Database
-def get_db():
-    db = SessionLocal()
+ocr_engine = None
+ocr_loaded = False
+
+def get_ocr_engine():
+    """Lazy load PaddleOCR only when needed"""
+    global ocr_engine, ocr_loaded
+    
+    if ocr_loaded:
+        return ocr_engine
+    
+    logger.info("Loading PaddleOCR engine...")
+    try:
+        ocr_engine = PaddleOCR(use_textline_orientation=True, lang="en")
+        logger.info("PaddleOCR loaded successfully!")
+        ocr_loaded = True
+        return ocr_engine
+    except Exception as e:
+        logger.warning(f"PaddleOCR failed to load: {e}. OCR features will be unavailable.")
+        ocr_loaded = True
+        return None
+
+# =========================================================
+# DATABASE MODELS FOR DOCUMENT AI
+# =========================================================
+
+Base = declarative_base()
+
+
+class DocumentVersion(Base):
+    __tablename__ = "document_versions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    filename = Column(String, nullable=False)
+    file_path = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class DocumentAIMetadata(Base):
+    __tablename__ = "document_ai_metadata"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    version_id = Column(UUID(as_uuid=True), ForeignKey("document_versions.id"), nullable=False, unique=True)
+    ocr_extracted_text = Column(Text, nullable=True)
+    ai_summary = Column(Text, nullable=True)
+    extracted_entities = Column(JSONB, nullable=True)
+    vector_embedding_id = Column(String, nullable=True)
+    processed_at = Column(DateTime(timezone=True), nullable=True)
+
+
+# OCR Database URL - uses same pool as main app
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://postgres:yourpassword@localhost:5432/yourdatabase"
+)
+
+ocr_engine_db = create_engine(DATABASE_URL, pool_pre_ping=True)
+OCRSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=ocr_engine_db)
+
+
+def get_ocr_db():
+    db = OCRSessionLocal()
     try:
         yield db
     finally:
         db.close()
+
+
+# Create tables on startup
+try:
+    Base.metadata.create_all(bind=ocr_engine_db)
+    logger.info("Document AI tables created successfully!")
+except Exception as e:
+    logger.warning(f"Could not create Document AI tables: {e}")
+
+# Upload directory for documents
+UPLOAD_DIR = BASE_DIR.parent / "uploads"
+UPLOAD_DIR.mkdir(exist_ok=True)
+
+
+def extract_text_with_ocr(file_path: str) -> str:
+    """Extract text from document using PaddleOCR"""
+    engine = get_ocr_engine()
+    
+    if engine is None:
+        return "OCR engine not available"
+
+    try:
+        results = engine.predict(file_path)
+        extracted_text = []
+
+        for page in results:
+            if "rec_texts" in page:
+                for text in page["rec_texts"]:
+                    if text and text.strip():
+                        extracted_text.append(text.strip())
+
+        return "\n".join(extracted_text)
+    except Exception as e:
+        logger.error(f"OCR extraction error: {e}")
+        return ""
 
 
 # Lifespan
@@ -53,7 +155,7 @@ async def lifespan(app: FastAPI):
 
 
 # App
-app = FastAPI(title="SIH26 SecureDocs", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="DocVault - Secure Document Management", version="1.0.0", lifespan=lifespan)
 
 # CORS
 CORS_ORIGINS = os.getenv(
@@ -410,6 +512,109 @@ async def reject_user(user_uid: str, db: Session = Depends(get_db)):
     except Exception as e:
         print(f"Reject user failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =========================================================
+# DOCUMENT OCR UPLOAD API
+# =========================================================
+
+@app.post("/api/documents/upload")
+async def upload_document(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """Upload a document and perform OCR extraction"""
+
+    # Validate file type
+    allowed_extensions = {".jpg", ".jpeg", ".png", ".pdf"}
+    extension = Path(file.filename).suffix.lower() if file.filename else ""
+
+    if extension not in allowed_extensions:
+        raise HTTPException(status_code=400, detail="Unsupported file type. Allowed: JPG, JPEG, PNG, PDF")
+
+    # Generate unique filename
+    version_id = uuid.uuid4()
+    safe_filename = f"{version_id}{extension}"
+    file_path = UPLOAD_DIR / safe_filename
+
+    try:
+        # Save uploaded file
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        # Create document version record
+        document_version = DocumentVersion(
+            id=version_id,
+            filename=file.filename or "unknown",
+            file_path=str(file_path)
+        )
+
+        db.add(document_version)
+        db.commit()
+        db.refresh(document_version)
+
+        # Perform OCR extraction
+        extracted_text = extract_text_with_ocr(str(file_path))
+
+        # Create AI metadata record
+        ai_metadata = DocumentAIMetadata(
+            id=uuid.uuid4(),
+            version_id=document_version.id,
+            ocr_extracted_text=extracted_text,
+            ai_summary=None,  # To be generated by AI later
+            extracted_entities=None,  # To be extracted by AI later
+            vector_embedding_id=None,  # To be generated for vector DB
+            processed_at=datetime.now(timezone.utc)
+        )
+
+        db.add(ai_metadata)
+        db.commit()
+        db.refresh(ai_metadata)
+
+        return {
+            "success": True,
+            "document_version_id": str(document_version.id),
+            "ai_metadata_id": str(ai_metadata.id),
+            "filename": file.filename,
+            "ocr_text": extracted_text,
+            "message": "Document uploaded and OCR completed successfully"
+        }
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Document upload failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Document processing failed: {str(e)}")
+
+
+@app.get("/api/documents/{version_id}/ai-metadata")
+def get_ai_metadata(
+    version_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get AI metadata for a document version"""
+
+    try:
+        from uuid import UUID
+        uuid_version_id = UUID(version_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid version ID format")
+
+    metadata = db.query(DocumentAIMetadata).filter(
+        DocumentAIMetadata.version_id == uuid_version_id
+    ).first()
+
+    if not metadata:
+        raise HTTPException(status_code=404, detail="AI metadata not found")
+
+    return {
+        "id": str(metadata.id),
+        "version_id": str(metadata.version_id),
+        "ocr_extracted_text": metadata.ocr_extracted_text,
+        "ai_summary": metadata.ai_summary,
+        "extracted_entities": metadata.extracted_entities,
+        "vector_embedding_id": metadata.vector_embedding_id,
+        "processed_at": metadata.processed_at.isoformat() if metadata.processed_at else None
+    }
 
 
 # SERVE REACT FRONTEND - MUST BE LAST
