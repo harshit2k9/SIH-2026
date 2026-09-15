@@ -342,11 +342,11 @@ async def reject_user(user_uid: str, db: Session = Depends(get_db)):
     return {"status": "rejected"}
 
 # SERVE REACT FRONTEND - MUST BE LAST
-frontend_dist = BASE_DIR.parent / "frontend" / "dist"
+frontend_dist = BASE_DIR / "static"
 
-if frontend_dist.exists():
+if frontend_dist.exists() and any(frontend_dist.iterdir()):
     app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="frontend")
-    logger.info("✅ React frontend mounted")
+    logger.info("✅ React frontend mounted from static directory")
 else:
     @app.get("/")
     def root():
