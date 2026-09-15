@@ -48,8 +48,11 @@ async def lifespan(app: FastAPI):
 # App
 app = FastAPI(title="SIH26 SecureDocs", version="1.0.0", lifespan=lifespan)
 
-# CORS
-CORS_ORIGINS = os.getenv("CORS_ORIGINS", "https://*.app.github.dev,http://localhost:5173,http://127.0.0.1:5173")
+# CORS - Support Render and other deployment environments
+CORS_ORIGINS = os.getenv(
+    "CORS_ORIGINS", 
+    "https://*.app.github.dev,http://localhost:5173,http://127.0.0.1:5173,https://sddms-frontend.onrender.com"
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS.split(","),

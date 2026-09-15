@@ -6,6 +6,10 @@ import os
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    # --- Environment ---
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+    RENDER: str = os.getenv("RENDER", "false")  # Set to 'true' on Render
+
     # --- PostgreSQL Components ---
     # Support both individual vars and full DATABASE_URL for cloud deployments (Render, etc.)
     DATABASE_URL: str | None = None  # Full connection string (e.g., from Render)
@@ -36,8 +40,11 @@ class Settings(BaseSettings):
     DB_STATEMENT_CACHE_SIZE: int = 1024
 
     # --- JWT ---
-    JWT_PUBLIC_KEY_PATH: str = "keys/public.pem"
-    JWT_PRIVATE_KEY_PATH: str = "keys/private.pem"  # ✅ ADDED: Required for /api/auth/token
+    # Support both local keys and Render secret files (/etc/secrets/)
+    _is_render = os.getenv("RENDER") == "true"
+    _keys_dir = "/etc/secrets" if _is_render else "keys"
+    JWT_PUBLIC_KEY_PATH: str = os.getenv("JWT_PUBLIC_KEY_PATH", f"{_keys_dir}/public.pem")
+    JWT_PRIVATE_KEY_PATH: str = os.getenv("JWT_PRIVATE_KEY_PATH", f"{_keys_dir}/private.pem")
     JWT_ALGORITHM: str = "RS256"
     JWT_AUDIENCE: str = "sddms-api"
     JWT_ISSUER: str = "sddms-auth-service"
