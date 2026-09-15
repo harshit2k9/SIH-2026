@@ -1,8 +1,9 @@
 ```
-<<<<<<< HEAD
+# Logs and temp files
+*.log
+*.tmp
 # Dependencies
 node_modules/
-=======
 # Python
 __pycache__/
 *.py[cod]
@@ -27,31 +28,70 @@ wheels/
 MANIFEST
 
 # Environment
-.venv/
-venv/
-env/
-ENV/
+.env
+.env.local
+.env.*
 
-# IDE
+# Editors
 .vscode/
 .idea/
-*.swp
-*.swo
 
-# Logs
-*.log
+# Dependencies
+node_modules/
+venv/
+.venv/
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+dist/
+build/
+target/
+.gradle/
 
-# OS
+# Compiled files
+*.pyc
+*.class
+*.o
+*.exe
+*.dll
+*.so
+*.a
+*.obj
+*.out
+
+# System files
 .DS_Store
 Thumbs.db
 
 # Coverage
-.coverage
 coverage/
 htmlcov/
+.coverage
 
+# Compressed files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
 # Testing
 .pytest_cache/
 .mypy_cache/
->>>>>>> 1e365190ed909f5bc913b38e6c435f124fa348be
 ```

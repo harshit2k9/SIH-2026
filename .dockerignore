@@ -1,0 +1,50 @@
+# Git
+.git
+.gitignore
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Test and coverage
+__pycache__/
+.pytest_cache/
+.coverage
+htmlcov/
+node_modules/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Local development
+uploads/
+keys/*.pem
+!keys/.gitkeep
+
+# Documentation (optional, include if needed in image)
+DEPLOYMENT.md
+PRODUCTION_DEPLOYMENT.md
+deploy.sh

@@ -47,6 +47,52 @@ This project delivers a Secure Digital Document Management System (DMS) enabling
 
 ---
 
+## 🚀 Quick Start Deployment
+
+### Prerequisites
+- Docker Engine 20.10+ or Docker Desktop
+- Docker Compose v2.0+ (or docker-compose v1.29+)
+- At least 4GB RAM available
+- 10GB free disk space
+
+### One-Command Deployment
+
+```bash
+# Clone the repository
+git clone https://github.com/harshit2k9/SIH-2026.git
+cd SIH-2026
+
+# Run the automated deployment script
+./deploy.sh
+```
+
+### Manual Deployment
+
+```bash
+# Start all services
+docker compose up -d --build
+
+# View logs
+docker compose logs -f
+```
+
+### Access the Application
+
+Once deployment is complete:
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| **Frontend** | http://localhost:5173 | React + TypeScript UI |
+| **Backend API** | http://localhost:8000 | FastAPI REST API |
+| **API Docs** | http://localhost:8000/docs | Swagger/OpenAPI Documentation |
+| **MinIO Console** | http://localhost:9001 | Object Storage Management |
+
+**Default MinIO Credentials:**
+- Username: `minio_admin`
+- Password: `minio_secure_password_2025`
+
+---
+
 ## 🛠️ Tech Stack & Tools
 
 * **Frontend:** React + Vite + Tailwind CSS / JavaScript (ES Modules)
