@@ -9,7 +9,7 @@ Base.metadata.create_all(bind=engine)
 # CONNECT POSTGRESQL
 # ============================================================
 
-connection = psycopg2.connect(settings.DATABASE_URL)
+connection = psycopg2.connect(settings.DATABASE_URL_COMPUTED)
 cursor = connection.cursor()
 
 # ============================================================
