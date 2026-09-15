@@ -7,6 +7,7 @@ Server-side encryption (AES256) is enforced on every upload.
 import asyncio
 import logging
 from typing import Optional
+from io import BytesIO
 
 import aioboto3
 from botocore.config import Config as BotoConfig
@@ -85,6 +86,27 @@ async def upload_file(local_path: str, storage_key: str, content_type: str) -> N
             )
     logger.debug(f"Uploaded encrypted file to storage key: {storage_key}")
 
+async def upload_bytes(
+    data: bytes,
+    storage_key: str,
+    content_type: str,
+) -> None:
+    """Upload encrypted bytes to MinIO/S3."""
+
+    extra_args = {"ContentType": content_type}
+
+    if settings.MINIO_ENABLE_SSE:
+        extra_args["ServerSideEncryption"] = "AES256"
+
+    async with _session.client("s3", **_client_kwargs()) as s3:
+        await s3.upload_fileobj(
+            BytesIO(data),
+            settings.MINIO_BUCKET,
+            storage_key,
+            ExtraArgs=extra_args,
+        )
+
+    logger.debug(f"Uploaded encrypted bytes to storage key: {storage_key}")
 
 async def delete_object(storage_key: str) -> None:
     """Used for rollback if a DB transaction fails after upload succeeded."""

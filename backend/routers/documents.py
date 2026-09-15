@@ -30,6 +30,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Optional
 from datetime import datetime, timezone, timedelta
+from services.envelope_encryption import envelope_encryption
 
 import aiofiles
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status, Query
@@ -52,7 +53,7 @@ from schemas import (
 from security.auth import AuthenticatedUser, verify_jwt
 from security.rbac import require_upload_permission
 from security.sanitize import assert_allowed_mime, detect_true_mime, extension_for_mime, sanitize_display_filename
-from services.storage import upload_file, delete_object, generate_presigned_download_url
+from services.storage import upload_file, upload_bytes, delete_object, generate_presigned_download_url
 from services.antivirus import scan_file
 from services.audit import write_audit_entry, log_audit_event
 
@@ -168,8 +169,17 @@ async def upload_document(
         document_uuid = uuid.uuid4()
         ext = extension_for_mime(true_mime)
         storage_key = f"case_{case_id}/{document_uuid}.{ext}"
+        # Read the validated, malware-scanned document
+        with open(quarantine_path, "rb") as f:
+            plaintext = f.read()
 
-        await upload_file(str(quarantine_path), storage_key, true_mime)
+        # Encrypt document using AES-256-GCM.
+        # The DEK is automatically generated and wrapped using Vault KMS.
+        encrypted_data, wrapped_dek = envelope_encryption.encrypt(plaintext)
+
+        # Upload only the encrypted document to MinIO
+
+        await upload_bytes(encrypted_data, storage_key, true_mime)
 
         # --- 9. Atomic DB write: document row + document_version row + audit entry together ---
         pool = get_pool()
@@ -212,12 +222,12 @@ async def upload_document(
                         """
                         INSERT INTO document_versions
                             (id, document_id, version_number, storage_uri, file_size_bytes,
-                             file_mime_type, sha256_checksum, kms_key_id, uploaded_by, uploaded_at)
+                             file_mime_type, sha256_checksum, kms_key_id, wrapped_dek, uploaded_by, uploaded_at)
                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
                         RETURNING id
                         """,
                         uuid.uuid4(), document_uuid, 1, storage_key, bytes_written,
-                        true_mime, file_hash, None, user.id,  # kms_key_id is None for now
+                        true_mime, file_hash, settings.VAULT_KMS_KEY_NAME,wrapped_dek, user.id
                     )
 
                     # Write hash-chained audit entry with complete version tracking
@@ -670,8 +680,16 @@ async def create_document_version(
             ext = extension_for_mime(true_mime)
             storage_key = f"case_{doc['case_id']}/{document_id}_v{new_version_num}.{ext}"
             
-            await upload_file(str(quarantine_path), storage_key, true_mime)
+            # Read the validated and malware-scanned document
+            with open(quarantine_path, "rb") as f:
+                plaintext = f.read()
 
+            # Encrypt using AES-256-GCM and wrap the DEK using Vault KMS
+            encrypted_data, wrapped_dek = envelope_encryption.encrypt(plaintext)
+
+            # Upload only encrypted data to MinIO
+            await upload_bytes(encrypted_data, storage_key, true_mime)
+            
             # 5. Atomic DB Update
             async with conn.transaction():
                 # Get user department for audit
@@ -683,10 +701,10 @@ async def create_document_version(
                 version_id = await conn.fetchval(
                     """
                     INSERT INTO document_versions 
-                    (id, document_id, version_number, storage_uri, file_size_bytes, file_mime_type, sha256_checksum, kms_key_id, uploaded_by, uploaded_at)
+                    (id, document_id, version_number, storage_uri, file_size_bytes, file_mime_type, sha256_checksum, kms_key_id, wrapped_dek, uploaded_by, uploaded_at)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) RETURNING id
                     """,
-                    uuid.uuid4(), document_id, new_version_num, storage_key, bytes_written, true_mime, file_hash, None, user.id
+                    uuid.uuid4(), document_id, new_version_num, storage_key, bytes_written, true_mime, file_hash, settings.VAULT_KMS_KEY_NAME, wrapped_dek, user.id
                 )
 
                 # Update main document record

@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     MINIO_USE_SSL: bool = False  
     MINIO_ENABLE_SSE: bool = True  # ✅ Enforce Server-Side Encryption
 
+    # --- HashiCorp Vault KMS ---
+    VAULT_ADDR: str = "http://host.docker.internal:8200"
+    VAULT_TOKEN: str | None = None
+    VAULT_KMS_KEY_NAME: str = "dms-document-key"
+
     # --- ClamAV ---
     CLAMAV_HOST: str = "clamav"  # Defaults to Docker service name
     CLAMAV_PORT: int = 3310

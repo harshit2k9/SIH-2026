@@ -227,6 +227,7 @@ class DocumentVersion(Base):
     file_mime_type = Column(String, nullable=True)
     sha256_checksum = Column(String, nullable=True)
     kms_key_id = Column(String, nullable=True)
+    wrapped_dek = Column(Text, nullable=True)
     uploaded_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
 
