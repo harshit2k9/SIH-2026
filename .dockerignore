@@ -48,3 +48,6 @@ keys/*.pem
 DEPLOYMENT.md
 PRODUCTION_DEPLOYMENT.md
 deploy.sh
+
+# Exclude frontend from backend build context (separate services)
+frontend/
