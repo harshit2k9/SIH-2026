@@ -50,10 +50,10 @@ async def lifespan(app: FastAPI):
     await init_db_pool()
     # Create tables on startup
     try:
-        Base.metadata.create_all(bind=ocr_engine_db)
-        logger.info("Document AI tables created successfully!")
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables created successfully!")
     except Exception as e:
-        logger.warning(f"Could not create Document AI tables: {e}")
+        logger.warning(f"Could not create database tables: {e}")
     yield
     await close_db_pool()
 
