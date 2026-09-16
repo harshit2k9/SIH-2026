@@ -9,7 +9,7 @@ from pathlib import Path
 
 import jwt
 from config import settings
-from database import SessionLocal, close_db_pool, get_pool, init_db_pool
+from database import Base, SessionLocal, close_db_pool, engine, get_pool, init_db_pool
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -66,12 +66,14 @@ CORS_ORIGINS = os.getenv(
     "CORS_ORIGINS",
     "https://sih-2026-mer1.onrender.com,https://*.app.github.dev,http://localhost:5173,http://127.0.0.1:5173",
 )
+allowed_origins = [origin.strip() for origin in CORS_ORIGINS.split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ORIGINS.split(","),
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With", "*"],
+    expose_headers=["*"],
 )
 
 # Include routers
