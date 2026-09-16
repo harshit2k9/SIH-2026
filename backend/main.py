@@ -26,6 +26,32 @@ from services.mfa import (
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+# Import all models to ensure they are registered with Base.metadata
+from models import (
+    User,
+    UserMapping,
+    Role,
+    Department,
+    UserDepartment,
+    RevokedToken,
+    Case,
+    CaseStageHistory,
+    CourtBench,
+    CourtHearing,
+    CourtOrder,
+    OrderSheet,
+    WarrantAndSummon,
+    Document,
+    DocumentVersion,
+    DocumentAIMetadata,
+    DigitalSignature,
+    EvidenceProvider,
+    EvidenceItem,
+    EvidenceCustodyTransfer,
+    ChainOfCustodyLog,
+    InterDepartmentShare,
+)
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parent
@@ -48,12 +74,12 @@ def get_db():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db_pool()
-    # Create tables on startup
+    # Create tables on startup - ensure all models are imported before this
     try:
         Base.metadata.create_all(bind=engine)
-        logger.info("Database tables created successfully!")
+        logger.info("✅ Database tables created successfully!")
     except Exception as e:
-        logger.warning(f"Could not create database tables: {e}")
+        logger.error(f"❌ Could not create database tables: {e}")
     yield
     await close_db_pool()
 
@@ -61,12 +87,15 @@ async def lifespan(app: FastAPI):
 # App
 app = FastAPI(title="SIH26 SecureDocs", version="1.0.0", lifespan=lifespan)
 
-# CORS
+# CORS - Must be added before routers and routes
 CORS_ORIGINS = os.getenv(
     "CORS_ORIGINS",
     "https://sih-2026-mer1.onrender.com,https://*.app.github.dev,http://localhost:5173,http://127.0.0.1:5173",
 )
 allowed_origins = [origin.strip() for origin in CORS_ORIGINS.split(",") if origin.strip()]
+
+logger.info(f"Configuring CORS with allowed origins: {allowed_origins}")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -74,6 +103,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Requested-With", "*"],
     expose_headers=["*"],
+    max_age=600,  # Cache preflight requests for 10 minutes
 )
 
 # Include routers
