@@ -1,1 +1,22 @@
-Nothing needs to be added to .gitignore since only a source file (backend/main.py) was modified and no build artifacts, dependencies, or temporary files were present in the changes.
+```
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Dependencies
+venv/
+.venv/
+.env
+.env.local
+*.env.*
+
+# Logs and temp files
+*.log
+*.tmp
+
+# Editors
+.vscode/
+.idea/
+```

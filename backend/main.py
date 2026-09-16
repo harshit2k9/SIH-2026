@@ -24,6 +24,16 @@ from services.mfa import (
     generate_mfa_secret,
     verify_totp,
 )
+
+
+def get_db():
+    """Dependency for getting database session"""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
 from sqlalchemy import Column, DateTime, ForeignKey, String, Text, create_engine, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
@@ -150,6 +160,12 @@ def extract_text_with_ocr(file_path: str) -> str:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db_pool()
+    # Create tables on startup
+    try:
+        Base.metadata.create_all(bind=ocr_engine_db)
+        logger.info("Document AI tables created successfully!")
+    except Exception as e:
+        logger.warning(f"Could not create Document AI tables: {e}")
     yield
     await close_db_pool()
 
@@ -417,13 +433,14 @@ async def get_documents(db: Session = Depends(get_db)):
 @app.get("/api/audit-logs")
 async def get_audit_logs(db: Session = Depends(get_db)):
     try:
-        logs = db.execute(
+        result = db.execute(
             text(
                 "SELECT action as title, actor_id as description, created_at as"
                 " time FROM public.chain_of_custody_logs ORDER BY created_at"
                 " DESC LIMIT 20"
             )
-        ).fetchall()
+        )
+        logs = result.fetchall()
         return [
             {
                 "title": l.title,
@@ -434,7 +451,7 @@ async def get_audit_logs(db: Session = Depends(get_db)):
         ]
     except Exception as e:
         # Return empty list if table doesn't exist yet
-        print(f"Audit logs table not available: {e}")
+        logger.warning(f"Audit logs table not available: {e}")
         return []
 
 
