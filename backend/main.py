@@ -92,7 +92,19 @@ CORS_ORIGINS = os.getenv(
     "CORS_ORIGINS",
     "https://sih-2026-mer1.onrender.com,https://*.app.github.dev,http://localhost:5173,http://127.0.0.1:5173",
 )
-allowed_origins = [origin.strip() for origin in CORS_ORIGINS.split(",") if origin.strip()]
+# Parse origins, strip whitespace, and filter empty strings
+allowed_origins = []
+for origin in CORS_ORIGINS.split(","):
+    stripped = origin.strip()
+    if stripped:
+        allowed_origins.append(stripped)
+
+# Add wildcard pattern support for Render subdomains if needed
+if not any("*" in o for o in allowed_origins):
+    # Ensure the specific frontend URL is included
+    frontend_url = "https://sih-2026-mer1.onrender.com"
+    if frontend_url not in allowed_origins:
+        allowed_origins.append(frontend_url)
 
 logger.info(f"Configuring CORS with allowed origins: {allowed_origins}")
 

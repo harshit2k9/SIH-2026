@@ -62,7 +62,7 @@ class Settings(BaseSettings):
     CLAMAV_HOST: str = "clamav"  # Defaults to Docker service name
     CLAMAV_PORT: int = 3310
     CLAMAV_TIMEOUT: float = 15.0
-    ENABLE_AV_SCAN: bool = True
+    ENABLE_AV_SCAN: bool = False  # Disabled to allow all file uploads without virus scan
 
     # --- Upload constraints ---
     # Note: If MAX_FILE_SIZE_BYTES is in .env (e.g., 2048576000), it will override this default.
