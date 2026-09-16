@@ -1211,9 +1211,14 @@ function App() {
                   
                   const formData = new FormData();
                   formData.append("file", selectedFile);
+                  formData.append("case_id", "00000000-0000-0000-0000-000000000001"); // Default case ID for testing
+                  formData.append("title", selectedFile.name);
+                  formData.append("document_type", "Evidence");
+                  formData.append("confidentiality_level", "1");
 
-                  // Get the auth token from local storage
-                  const token = localStorage.getItem("access_token")
+                  // Get the auth token from localStorage
+                  const token = localStorage.getItem("access_token");
+                  
                   try {
                     setUploadProgress(30);
                     
