@@ -16,7 +16,13 @@ env/
 # Environment
 .env
 .env.local
-*.env.*
+.env.*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
 
 # Editors
 .vscode/
