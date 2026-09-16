@@ -1210,11 +1210,17 @@ function App() {
                   setUploadProgress(10);
                   
                   const formData = new FormData();
-                  formData.append("file", selectedFile);
-                  formData.append("case_id", "00000000-0000-0000-0000-000000000001"); // Default case ID for testing
-                  formData.append("title", selectedFile.name);
-                  formData.append("document_type", "Evidence");
-                  formData.append("confidentiality_level", "1");
+                  // Replace the hardcoded values in your FormData with user inputs
+                  formData.append("case_id", uploadCaseId);
+                  formData.append("title", uploadTitle);
+                  formData.append("document_type", uploadDocumentType);
+                  formData.append("confidentiality_level", uploadConfidentialityLevel);
+
+                  // Add validation
+                  if (!uploadCaseId || !uploadTitle) {
+                    alert("Please fill in Case ID and Title");
+                    return;
+                  }
 
                   // Get the auth token from localStorage
                   const token = localStorage.getItem("access_token");
