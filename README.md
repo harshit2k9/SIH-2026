@@ -2,6 +2,10 @@
 
 [![SIH 2026](https://img.shields.io/badge/Smart%20India%20Hackathon-2026-blue.svg)](https://sih.gov.in)
 [![Build Status](https://img.shields.io/badge/Status-In%20Development-green.svg)](#)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg?logo=docker&logoColor=white)](#)
+[![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg?logo=fastapi&logoColor=white)](#)
+[![React](https://img.shields.io/badge/Frontend-React%20%2B%20Vite-61DAFB.svg?logo=react&logoColor=black)](#)
+[![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-4169E1.svg?logo=postgresql&logoColor=white)](#)
 
 ---
 
@@ -54,13 +58,13 @@ The challenge is to create a secure, scalable, and intelligent platform that str
 
 ## ✨ Key Features
 
-• Digitize and centralize document storage.
-• Ensure secure access and confidentiality.
-• Prevent unauthorized modifications.
-• Maintain a complete audit trail of document activities.
-• Enable efficient document search and retrieval.
-• Support collaboration among authorized stakeholders.
-• Ensure compliance with legal and regulatory requirements.
+* **Digitized & Centralized Storage:** Centralized document repository with encrypted storage at rest.
+* **Role-Based Access Control (RBAC):** Granular authorization and access control ensuring strict document confidentiality.
+* **Tamper-Evident Integrity:** Immutable logging and cryptographic verification to prevent unauthorized modifications.
+* **Complete Audit Trail:** Real-time tracking and logging of all document activities, access attempts, and edits.
+* **Intelligent Search & Retrieval:** Indexed search functionality for rapid access to critical case files.
+* **Collaborative & Secure Sharing:** Cross-department collaboration tools designed for legal and investigative workflows.
+* **Regulatory Compliance:** Built to adhere to legal and regulatory data security standards.
 
 ---
 
@@ -69,12 +73,58 @@ The challenge is to create a secure, scalable, and intelligent platform that str
 
 | Name | Primary Role | Domain & Responsibilities |
 | :--- | :--- | :--- |
-| **Harshit Kumar** | 🌐 **Full Stack Development** | System integration, CI/CD, deployment infrastructure, and cross-tier feature bridging |
+| **Harshit Kumar** | 🌐 **Full Stack Development** | System integration, CI/CD, deployment infrastructure, container orchestration, and cross-tier feature bridging. |
 | **Hansika** | 🎨 **Frontend Lead** | User interfaces, document viewers, role-based dashboards, and client-side security. |
-| **Manas Roy** | ⚙️ **API Team** | REST/gRPC API development, authentication, authorization, and storage engines |
-| **Akshat** | ⚙️ **Database Team** | Schema design, immutable logging, encryption at rest, and search indexing |
-| **Ansh Goyal** | ⚙️ **Database Team** | Schema design, immutable logging, encryption at rest, and search indexing |
-| **Hrishit Khurana** | ⚙️ **API Team** | REST/gRPC API development, authentication, authorization, and storage engines |
+| **Manas ** | ⚙️ **API Team** | REST API development, authentication, authorization, and storage engine implementation. |
+| **Hrishit Khurana** | ⚙️ **API Team** | REST API development, authentication, authorization, and storage engine implementation. |
+| **Akshat** | 💾 **Database Team** | Schema design, immutable logging, encryption at rest, and search indexing. |
+| **Ansh Goyal** | 💾 **Database Team** | Schema design, immutable logging, encryption at rest, and search indexing. |
+
+---
+
+## 🚀 Quick Start Deployment
+
+### Prerequisites
+- Docker Engine 20.10+ or Docker Desktop
+- Docker Compose v2.0+ (or docker-compose v1.29+)
+- At least 4GB RAM available
+- 10GB free disk space
+
+### One-Command Deployment
+
+```bash
+# Clone the repository
+git clone https://github.com/harshit2k9/SIH-2026.git
+cd SIH-2026
+
+# Run the automated deployment script
+./deploy.sh
+```
+
+### Manual Deployment
+
+```bash
+# Start all services
+docker compose up -d --build
+
+# View logs
+docker compose logs -f
+```
+
+### Access the Application
+
+Once deployment is complete:
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| **Frontend** | http://localhost:5173 | React + TypeScript UI |
+| **Backend API** | http://localhost:8000 | FastAPI REST API |
+| **API Docs** | http://localhost:8000/docs | Swagger/OpenAPI Documentation |
+| **MinIO Console** | http://localhost:9001 | Object Storage Management |
+
+**Default MinIO Credentials:**
+- Username: `minio_admin`
+- Password: `minio_secure_password_2025`
 
 ---
 
@@ -93,3 +143,23 @@ The challenge is to create a secure, scalable, and intelligent platform that str
 ---
 
 ## 🏗️ Project Architecture
+
+```text
+               ┌────────────────────────────────────────┐
+               │        Client Browser (Vite UI)        │
+               │         http://localhost:5173          │
+               └───────────────────┬────────────────────┘
+                                   │
+                                   │ REST API Calls
+                                   ▼
+               ┌────────────────────────────────────────┐
+               │       Python FastAPI Backend           │
+               │         http://backend:8000            │
+               └───────────────────┬────────────────────┘
+                                   │
+                                   │ SQL Queries
+                                   ▼
+               ┌────────────────────────────────────────┐
+               │         PostgreSQL Database            │
+               │         http://database:5432           │
+               └────────────────────────────────────────┘

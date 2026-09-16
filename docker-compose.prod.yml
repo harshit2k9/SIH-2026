@@ -1,0 +1,132 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sddms_backend_prod
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_PRIVATE_KEY_PATH: /app/keys/private.pem
+      JWT_PUBLIC_KEY_PATH: /app/keys/public.pem
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-sddms-api}
+      JWT_ISSUER: ${JWT_ISSUER:-sddms-auth-service}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      SIH26_SESSION_SECRET: ${SIH26_SESSION_SECRET}
+      ENVIRONMENT: production
+      # MinIO or alternative storage
+      MINIO_ENDPOINT_URL: ${MINIO_ENDPOINT_URL:-http://minio:9000}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: ${MINIO_BUCKET:-legal-documents}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      # ClamAV (disable for free tier deployments)
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: ${CLAMAV_PORT:-3310}
+      ENABLE_AV_SCAN: ${ENABLE_AV_SCAN:-false}
+      MAX_FILE_SIZE_BYTES: ${MAX_FILE_SIZE_BYTES:-2048576000}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/keys:/app/keys:ro
+      - uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2
+    networks:
+      - app-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        - VITE_API_URL=${VITE_API_URL:-http://localhost:8000}
+    container_name: sddms_frontend_prod
+    environment:
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:8000}
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - app-net
+
+  postgres:
+    image: postgres:17
+    container_name: sddms_postgres_prod
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database/SIH_DATABASE.sql:/docker-entrypoint-initdb.d/01_sih_database.sql:ro
+      - ./database/test_database.sql:/docker-entrypoint-initdb.d/02_test_data.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - app-net
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: sddms_minio_prod
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - app-net
+
+  clamav:
+    image: clamav/clamav:latest
+    container_name: sddms_clamav_prod
+    ports:
+      - "3310:3310"
+    environment:
+      - CLAMAV_NO_FRESHCLAMD=true
+    volumes:
+      - clamdata:/var/lib/clamav
+    healthcheck:
+      test: ["CMD-SHELL", "echo PING | nc 127.0.0.1 3310 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+    networks:
+      - app-net
+
+networks:
+  app-net:
+    driver: bridge
+
+volumes:
+  pgdata:
+  miniodata:
+  clamdata:
+  uploads:

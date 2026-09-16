@@ -1,0 +1,7 @@
+# JWT Keys - NEVER commit these to version control!
+*.pem
+*.key
+private*
+public*
+!README.md
+!.gitignore

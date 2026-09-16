@@ -1,6 +1,22 @@
-node_modules/
+```
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Dependencies
+venv/
+.venv/
 .env
+.env.local
+*.env.*
+
+# Logs and temp files
 *.log
-dist/
-build/
-.DS_Store
+*.tmp
+
+# Editors
+.vscode/
+.idea/
+```
