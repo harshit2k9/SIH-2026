@@ -300,7 +300,7 @@ async def mfa_verify(
     ).fetchone()
     
     department_id = str(user_dept.department_id) if user_dept else None
-
+    
     now = datetime.utcnow()
     payload = {
         "sub": str(user.id),
@@ -309,6 +309,7 @@ async def mfa_verify(
         "iat": now,
         "exp": now + timedelta(hours=8),
         "jti": str(uuid.uuid4()),
+        "iss":settings.JWT_ISSUER,
     }
     
     # Add department_id if available
