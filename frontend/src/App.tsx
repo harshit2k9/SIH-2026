@@ -1197,12 +1197,15 @@ function App() {
                 <label>Case ID *</label>
                 <input
                   type="text"
-                  placeholder="Enter case ID (e.g., CASE-2024-001)"
+                  placeholder="Enter case UUID (e.g., 550e8400-e29b-41d4-a716-446655440000)"
                   value={uploadCaseId}
                   onChange={(e) => setUploadCaseId(e.target.value)}
                   disabled={uploading}
                   required
                 />
+                <small style={{ color: "var(--text-muted)", fontSize: "12px", marginTop: "4px", display: "block" }}>
+                  Note: Must be a valid UUID format. Create a case first to get its UUID.
+                </small>
               </div>
 
               <div className="form-group" style={{ marginTop: "16px" }}>
