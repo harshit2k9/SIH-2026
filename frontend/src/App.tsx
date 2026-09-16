@@ -1211,12 +1211,17 @@ function App() {
                   
                   const formData = new FormData();
                   formData.append("file", selectedFile);
-                  
+
+                  // Get the auth token from local storage
+                  const token = localStorage.getItem("access_token")
                   try {
                     setUploadProgress(30);
                     
                     const response = await fetch(`${API_BASE_URL}/api/documents/upload`, {
                       method: "POST",
+                      headers: {
+                        Authorization: token ? `Bearer ${token}` : "",
+                      },
                       body: formData,
                     });
                     
