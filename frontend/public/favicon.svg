@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4ab7fb" />
+      <stop offset="100%" stop-color="#00b5c3" />
+    </linearGradient>
+  </defs>
+
+  <!-- App Icon Background -->
+  <rect width="512" height="512" rx="110" ry="110" fill="url(#bgGradient)" />
+
+  <!-- Document Icon -->
+  <g id="document">
+    <!-- Main Paper Body -->
+    <path 
+      d="M 152 136 
+         L 300 136 
+         L 360 196 
+         L 360 376 
+         C 360 386 352 394 342 394 
+         L 170 394 
+         C 160 394 152 386 152 376 
+         Z" 
+      fill="#f2f6f9" 
+    />
+    
+    <!-- Folded Corner -->
+    <path 
+      d="M 300 136 
+         L 300 196 
+         L 360 196 
+         Z" 
+      fill="#b8d3ee" 
+    />
+  </g>
+
+  <!-- Key Symbol -->
+  <g id="key">
+    <!-- Outer Key Head -->
+    <circle cx="256" cy="246" r="42" fill="#1b4287" />
+    
+    <!-- Inner Key Hole -->
+    <circle cx="256" cy="246" r="16" fill="#558bd1" />
+    
+    <!-- Key Shaft -->
+    <path 
+      d="M 240 280 
+         L 272 280 
+         L 272 338 
+         C 272 346 265 354 256 354 
+         C 247 354 240 346 240 338 
+         Z" 
+      fill="#1b4287" 
+    />
+  </g>
+
+  <!-- Checkmark Badge -->
+  <g id="badge">
+    <!-- Green Circle -->
+    <circle cx="366" cy="376" r="56" fill="#31c76c" />
+    
+    <!-- White Checkmark -->
+    <path 
+      d="M 338 376 
+         L 358 396 
+         L 394 352" 
+      stroke="#ffffff" 
+      stroke-width="14" 
+      stroke-linecap="round" 
+      stroke-linejoin="round" 
+      fill="none" 
+    />
+  </g>
+</svg>
