@@ -90,7 +90,7 @@ app = FastAPI(title="SIH26 SecureDocs", version="1.0.0", lifespan=lifespan)
 # CORS - Must be added before routers and routes
 CORS_ORIGINS = os.getenv(
     "CORS_ORIGINS",
-    "https://sih-2026-mer1.onrender.com,https://*.app.github.dev,http://localhost:5173,http://127.0.0.1:5173",
+    "*",
 )
 # Parse origins, strip whitespace, and filter empty strings
 allowed_origins = []
@@ -99,12 +99,16 @@ for origin in CORS_ORIGINS.split(","):
     if stripped:
         allowed_origins.append(stripped)
 
-# Add wildcard pattern support for Render subdomains if needed
-if not any("*" in o for o in allowed_origins):
-    # Ensure the specific frontend URL is included
-    frontend_url = "https://sih-2026-mer1.onrender.com"
-    if frontend_url not in allowed_origins:
-        allowed_origins.append(frontend_url)
+# If wildcard is specified, use it directly
+if "*" in allowed_origins:
+    allowed_origins = ["*"]
+else:
+    # Add wildcard pattern support for Render subdomains if needed
+    if not any("*" in o for o in allowed_origins):
+        # Ensure the specific frontend URL is included
+        frontend_url = "https://sih-2026-mer1.onrender.com"
+        if frontend_url not in allowed_origins:
+            allowed_origins.append(frontend_url)
 
 logger.info(f"Configuring CORS with allowed origins: {allowed_origins}")
 
@@ -112,8 +116,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Requested-With", "*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
     expose_headers=["*"],
     max_age=600,  # Cache preflight requests for 10 minutes
 )
