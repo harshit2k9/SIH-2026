@@ -21,20 +21,27 @@ AUDIT_CHAIN_LOCK_ID = 867530901
 
 def _compute_entry_hash(
     prev_hash: str | None,
+    case_id: uuid.UUID,
     document_id: uuid.UUID | None,
+    evidence_id: uuid.UUID | None,
     actor_id: uuid.UUID,
+    actor_department_id: uuid.UUID,
     action: str,
-    details: dict[str, Any],
-    timestamp: str,
+    ip_address: str | None,
+    user_agent: str | None,
 ) -> str:
+    """Computes the hash for an audit entry. All parameters must be included to ensure chain integrity."""
     payload = json.dumps(
         {
             "prev_hash": prev_hash,
+            "case_id": str(case_id),
             "document_id": str(document_id) if document_id else None,
+            "evidence_id": str(evidence_id) if evidence_id else None,
             "actor_id": str(actor_id),
+            "actor_department_id": str(actor_department_id),
             "action": action,
-            "details": details,
-            "timestamp": timestamp, # Cryptographically binds the time to the hash
+            "ip_address": ip_address,
+            "user_agent": user_agent,
         },
         sort_keys=True,
     ).encode("utf-8")
@@ -103,19 +110,20 @@ async def write_audit_entry(
 
 async def log_audit_event(
     conn: asyncpg.Connection, 
+    case_id: uuid.UUID,
     document_id: uuid.UUID, 
-    user_id: uuid.UUID, 
+    user_id: uuid.UUID,
+    department_id: uuid.UUID, 
     action: str, 
     ip_address: str,
-    extra_details: dict[str, Any] | None = None,
 ) -> str:
     """Appends an immutable entry to the chain of custody audit log."""
-    details = extra_details or {}
-    details["ip_address"] = ip_address
     return await write_audit_entry(
         conn=conn,
+        case_id=case_id,
         actor_id=user_id,
+        actor_department_id=department_id,
         action=action,
         document_id=document_id,
-        details=details,
+        ip_address=ip_address,
     )
