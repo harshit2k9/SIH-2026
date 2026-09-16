@@ -568,29 +568,28 @@ function App() {
         <div className="login-background-grid"></div>
         <div className="login-container">
           <div className="login-brand">
-            <div className="brand-icon">S</div>
-            <div>
-              <h2>DocVault</h2>
-              <span>SECURE DOCUMENT PLATFORM</span>
-            </div>
+            <img src="/logo.svg" alt="DocVault Logo" className="brand-logo" />
           </div>
           <div className="login-card">
             <div className="login-heading">
-              <span className="eyebrow">DocVault SECURE PLATFORM</span>
+              <span className="eyebrow">SECURE DOCUMENT PLATFORM</span>
               <h1>Protect. Verify. Access.</h1>
               <p>
                 A secure platform for managing, tracking, and accessing sensitive documents with
                 controlled permissions and live liveness verification.
               </p>
             </div>
-            <div className="home-actions" style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              <button className="primary-login-button" onClick={() => setPage("login")}>
-                Sign In
+            <div className="home-actions">
+              <button className="home-action-button primary" onClick={() => setPage("login")}>
+                <span className="button-icon">🔐</span>
+                Sign In to Your Account
               </button>
-              <button className="primary-login-button" style={{ background: "rgba(255,255,255,0.1)" }} onClick={() => setPage("register")}>
-                Create Account
+              <button className="home-action-button secondary" onClick={() => setPage("register")}>
+                <span className="button-icon">✨</span>
+                Create New Account
               </button>
-              <button className="primary-login-button" style={{ background: "rgba(255,255,255,0.1)" }} onClick={() => setPage("admin_login")}>
+              <button className="home-action-button secondary" onClick={() => setPage("admin_login")}>
+                <span className="button-icon">⚙️</span>
                 Admin Console
               </button>
             </div>
@@ -935,11 +934,7 @@ function App() {
       )}
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <div className="brand-icon small">S</div>
-          <div>
-            <h2>DocVault</h2>
-            <span>DocVault PLATFORM</span>
-          </div>
+          <img src="/logo.svg" alt="DocVault Logo" className="brand-logo" style={{ height: '42px' }} />
         </div>
         <div className="sidebar-user">
           <div className="avatar">
