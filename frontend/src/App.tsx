@@ -1274,8 +1274,8 @@ function App() {
                 className="primary-login-button" 
                 style={{ marginTop: "20px", width: "100%" }} 
                 onClick={async () => {
-                  if (!selectedFile || !uploadCaseId || !uploadTitle) {
-                    alert("Please fill in all required fields (Case ID and Document Title).");
+                  if (!selectedFile) {
+                    alert("Please select a file.");
                     return;
                   }
                   
@@ -1283,21 +1283,12 @@ function App() {
                   setUploadProgress(10);
                   
                   const formData = new FormData();
-                  // Append the file first
                   formData.append("file", selectedFile);
-                  // Replace the hardcoded values in your FormData with user inputs
-                  formData.append("case_id", uploadCaseId);
-                  formData.append("title", uploadTitle);
+                  formData.append("case_id", uploadCaseId || "66666666-6666-6666-666666666666");
+                  formData.append("title", uploadTitle || "Auto Title");
                   formData.append("document_type", uploadDocumentType);
                   formData.append("confidentiality_level", uploadConfidentialityLevel);
 
-                  // Add validation
-                  if (!uploadCaseId || !uploadTitle) {
-                    alert("Please fill in Case ID and Title");
-                    return;
-                  }
-
-                  // Get the auth token from localStorage
                   const token = localStorage.getItem("access_token");
                   
                   try {
@@ -1314,8 +1305,8 @@ function App() {
                     setUploadProgress(70);
                     
                     if (!response.ok) {
-                      const error = await response.json();
-                      throw new Error(error.detail || "Upload failed");
+                      const error = await response.json().catch(() => ({}));
+                      throw new Error(error.detail || `Upload failed (${response.status})`);
                     }
                     
                     const result = await response.json();
@@ -1324,7 +1315,6 @@ function App() {
                     console.log("Upload result:", result);
                     setUploadSuccess(true);
                     
-                    // Reset after 3 seconds
                     setTimeout(() => {
                       setUploadSuccess(false);
                       setSelectedFile(null);
