@@ -93,7 +93,7 @@ def extract_client_ip(request: Request) -> str:
 @limiter.limit(settings.RATE_LIMIT_UPLOAD)
 async def upload_document(
     request: Request,
-    case_id: uuid.UUID = Form(...),
+    case_id: Optional[uuid.UUID] = Form(None),
     title: str = Form(...),
     document_type: str = Form(...),
     confidentiality_level: int = Form(default=1),
@@ -118,11 +118,15 @@ async def upload_document(
         )
     if not document_number or not document_number.strip():
         # Auto-generate a unique document number based on case_id and timestamp
-        document_number = f"DOC-{case_id.hex[:8].upper()}-{int(datetime.now().timestamp())}"
+        if case_id:
+            document_number = f"DOC-{case_id.hex[:8].upper()}-{int(datetime.now().timestamp())}"
+        else:
+            document_number = f"DOC-GENERAL-{int(datetime.now().timestamp())}"
     else:
         document_number = document_number.strip()
-    # --- 3. RBAC ---
-    await require_upload_permission(user, case_id)
+    # --- 3. RBAC (only if case_id is provided) ---
+    if case_id:
+        await require_upload_permission(user, case_id)
 
     # --- 4. Pre-flight size check (defense in depth; not fully trustworthy alone) ---
     content_length = request.headers.get("content-length")
@@ -175,7 +179,10 @@ async def upload_document(
         # --- 8. Upload to encrypted object storage ---
         document_uuid = uuid.uuid4()
         ext = extension_for_mime(true_mime)
-        storage_key = f"case_{case_id}/{document_uuid}.{ext}"
+        if case_id:
+            storage_key = f"case_{case_id}/{document_uuid}.{ext}"
+        else:
+            storage_key = f"uncategorized/{document_uuid}.{ext}"
 
         try:
             await upload_file(str(quarantine_path), storage_key, true_mime)

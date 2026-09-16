@@ -48,7 +48,7 @@ def _compute_entry_hash(
     return hashlib.sha256(payload).hexdigest()
 async def write_audit_entry(
     conn: asyncpg.Connection,
-    case_id: uuid.UUID,
+    case_id: Optional[uuid.UUID],
     actor_id: uuid.UUID,
     actor_department_id: uuid.UUID,
     action: str,

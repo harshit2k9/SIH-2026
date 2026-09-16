@@ -46,7 +46,7 @@ CREATE TABLE evidence_custody_transfers (
  physical_condition_notes TEXT
 );
 CREATE TABLE documents (
- id UUID PRIMARY KEY, case_id UUID NOT NULL REFERENCES cases(id), evidence_item_id UUID REFERENCES evidence_items(id),
+ id UUID PRIMARY KEY, case_id UUID REFERENCES cases(id), evidence_item_id UUID REFERENCES evidence_items(id),
  document_number VARCHAR(100) NOT NULL UNIQUE, title VARCHAR(255) NOT NULL, document_type VARCHAR(100) NOT NULL,
  confidentiality_level INT NOT NULL, current_version INT NOT NULL DEFAULT 1,
  created_by UUID NOT NULL REFERENCES users(id), created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -72,7 +72,7 @@ CREATE TABLE inter_department_shares (
  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, created_by UUID REFERENCES users(id)
 );
 CREATE TABLE chain_of_custody_logs (
- id UUID PRIMARY KEY, case_id UUID NOT NULL REFERENCES cases(id), document_id UUID REFERENCES documents(id),
+ id UUID PRIMARY KEY, case_id UUID REFERENCES cases(id), document_id UUID REFERENCES documents(id),
  evidence_id UUID REFERENCES evidence_items(id), actor_id UUID NOT NULL REFERENCES users(id),
  actor_department_id UUID NOT NULL REFERENCES departments(id), action VARCHAR(100) NOT NULL,
  ip_address VARCHAR(100), user_agent TEXT, previous_log_hash VARCHAR(255), current_log_hash VARCHAR(255),
