@@ -67,8 +67,6 @@ Path(settings.QUARANTINE_DIR).mkdir(parents=True, exist_ok=True)
 # Dedicated error log file — guarantees the full traceback lands somewhere
 ERROR_LOG_PATH = Path(__file__).resolve().parent.parent.parent / "upload_errors.log"
 
-ALLOWED_DOC_TYPES = {"FIR", "ChargeSheet", "Evidence", "Forensic Report", "Witness Statement", "Legal Notice", "Judgment", "Other"}
-
 def _log_full_traceback(context: str) -> None:
     tb_text = traceback.format_exc()
     with open(ERROR_LOG_PATH, "a", encoding="utf-8") as f:
@@ -93,8 +91,8 @@ def extract_client_ip(request: Request) -> str:
 async def upload_document(
     request: Request,
     case_id: Optional[uuid.UUID] = Form(None),
-    title: str = Form(...),
-    document_type: str = Form(...),
+    title: Optional[str] = Form(None),
+    document_type: Optional[str] = Form(None),
     confidentiality_level: int = Form(default=1),
     evidence_item_id: Optional[uuid.UUID] = Form(None),
     document_number: Optional[str] = Form(None),
@@ -141,8 +139,8 @@ async def upload_document(
                          created_by, created_at, is_locked)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), false)
                     """,
-                    document_uuid, None, None, f"DOC-{int(datetime.now().timestamp())}", title,
-                    document_type.strip(), confidentiality_level, 1, fake_user_id,
+                    document_uuid, None, None, f"DOC-{int(datetime.now().timestamp())}", title or "Untitled",
+                    (document_type or "unknown").strip(), confidentiality_level, 1, fake_user_id,
                 )
 
                 # Insert into document_versions table
