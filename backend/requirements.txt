@@ -17,7 +17,6 @@ mediapipe
 easyocr
 asyncpg
 aiofiles
-aioboto3
 pyjwt[crypto]
 python-magic
 pydantic
