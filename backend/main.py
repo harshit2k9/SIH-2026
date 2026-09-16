@@ -157,7 +157,7 @@ async def check_liveness(frames: list[UploadFile] = File(...)):
         )
 
 
-# Register
+# Register - Bypass liveness and face verification for direct registration
 @app.post("/api/auth/register")
 async def register(
     full_name: str = Form(...),
@@ -165,50 +165,32 @@ async def register(
     phone: str = Form(...),
     password: str = Form(...),
     aadhaar_number: str = Form(...),
-    liveness_token: str = Form(...),
-    aadhaar_image: UploadFile = File(...),
+    liveness_token: str = Form(None),  # Made optional
+    aadhaar_image: UploadFile = File(None),  # Made optional
     db: Session = Depends(get_db),
 ):
-    session = LIVENESS_SESSIONS.get(liveness_token)
-    if not session or session["expires_at"] < time.time():
-        raise HTTPException(status_code=400, detail="Liveness expired")
-
-    aadhaar_bytes = await aadhaar_image.read()
-
-    face_verified = False
-    try:
-        face_result = compare_faces(aadhaar_bytes, session["live_photo_bytes"])
-        face_verified = face_result.get("matched", False)
-    except Exception as e:
-        logger.error(f"Face match error: {e}")
-
+    # Skip liveness check if token provided, or just proceed without it
     temp_reg_id = int(time.time() % 100000)
 
-    if face_verified:
-        mfa_secret = generate_mfa_secret()
-        provisioning_uri = create_provisioning_uri(mfa_secret, email)
-        qr_code = create_qr_code_base64(provisioning_uri)
+    # Always proceed with MFA setup - skip face verification
+    mfa_secret = generate_mfa_secret()
+    provisioning_uri = create_provisioning_uri(mfa_secret, email)
+    qr_code = create_qr_code_base64(provisioning_uri)
 
-        LOGIN_CHALLENGES[f"mfa_{temp_reg_id}"] = {
-            "full_name": full_name,
-            "email": email,
-            "phone": phone,
-            "password": password,
-            "mfa_secret": mfa_secret,
-        }
+    LOGIN_CHALLENGES[f"mfa_{temp_reg_id}"] = {
+        "full_name": full_name,
+        "email": email,
+        "phone": phone,
+        "password": password,
+        "mfa_secret": mfa_secret,
+    }
 
-        return {
-            "status": "mfa_pending",
-            "user_uid": f"REG-{temp_reg_id}",
-            "qr_code": qr_code,
-            "secret": mfa_secret,
-        }
-    else:
-        return {
-            "status": "flagged",
-            "user_uid": f"REG-{temp_reg_id}",
-            "message": "Face verification failed",
-        }
+    return {
+        "status": "mfa_pending",
+        "user_uid": f"REG-{temp_reg_id}",
+        "qr_code": qr_code,
+        "secret": mfa_secret,
+    }
 
 
 # MFA Setup
