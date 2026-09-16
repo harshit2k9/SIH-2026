@@ -1228,12 +1228,13 @@ function App() {
                   disabled={uploading}
                   style={{ width: "100%", padding: "12px", background: "rgba(255,255,255,0.05)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)", color: "var(--text-primary)" }}
                 >
-                  <option value="Evidence">Evidence</option>
-                  <option value="Witness Statement">Witness Statement</option>
-                  <option value="Forensic Report">Forensic Report</option>
-                  <option value="Legal Document">Legal Document</option>
-                  <option value="Charge Sheet">Charge Sheet</option>
                   <option value="FIR">FIR</option>
+                  <option value="ChargeSheet">ChargeSheet</option>
+                  <option value="Evidence">Evidence</option>
+                  <option value="Forensic Report">Forensic Report</option>
+                  <option value="Witness Statement">Witness Statement</option>
+                  <option value="Legal Notice">Legal Notice</option>
+                  <option value="Judgment">Judgment</option>
                   <option value="Other">Other</option>
                 </select>
               </div>
@@ -1282,6 +1283,8 @@ function App() {
                   setUploadProgress(10);
                   
                   const formData = new FormData();
+                  // Append the file first
+                  formData.append("file", selectedFile);
                   // Replace the hardcoded values in your FormData with user inputs
                   formData.append("case_id", uploadCaseId);
                   formData.append("title", uploadTitle);
