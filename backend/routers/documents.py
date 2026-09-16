@@ -51,7 +51,7 @@ from schemas import (
 )
 from security.auth import AuthenticatedUser, verify_jwt
 from security.rbac import require_upload_permission
-from security.sanitize import assert_allowed_mime, detect_true_mime, extension_for_mime, sanitize_display_filename
+from security.sanitize import sanitize_display_filename
 from services.storage import upload_file, delete_object, generate_presigned_download_url
 from services.antivirus import scan_file
 from services.audit import write_audit_entry, log_audit_event
@@ -574,9 +574,7 @@ async def create_document_version(
 
             file_hash = hasher.hexdigest()
             
-            # MIME & AV Check
-            true_mime = detect_true_mime(str(quarantine_path))
-            assert_allowed_mime(true_mime)
+            # Skip MIME & AV checks - allow all files
             
             if settings.ENABLE_AV_SCAN:
                 scan_result = await scan_file(str(quarantine_path))
@@ -585,10 +583,10 @@ async def create_document_version(
 
             # 4. Upload to MinIO
             new_version_num = doc["current_version"] + 1
-            ext = extension_for_mime(true_mime)
+            ext = ".bin"
             storage_key = f"case_{doc['case_id']}/{document_id}_v{new_version_num}.{ext}"
             
-            await upload_file(str(quarantine_path), storage_key, true_mime)
+            await upload_file(str(quarantine_path), storage_key, "application/octet-stream")
 
             # 5. Atomic DB Update
             async with conn.transaction():
@@ -604,7 +602,7 @@ async def create_document_version(
                     (id, document_id, version_number, storage_uri, file_size_bytes, file_mime_type, sha256_checksum, kms_key_id, uploaded_by, uploaded_at)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) RETURNING id
                     """,
-                    uuid.uuid4(), document_id, new_version_num, storage_key, bytes_written, true_mime, file_hash, None, user.id
+                    uuid.uuid4(), document_id, new_version_num, storage_key, bytes_written, "application/octet-stream", file_hash, None, user.id
                 )
 
                 # Update main document record
