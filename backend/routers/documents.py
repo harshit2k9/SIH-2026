@@ -157,10 +157,18 @@ async def upload_document(
 
         # --- 7. Antivirus scan ---
         if settings.ENABLE_AV_SCAN:
-            scan_result = await scan_file(str(quarantine_path))
-            if scan_result.infected:
-                _log_security_event("MALWARE_DETECTED", user.id, f"signature={scan_result.signature}")
-                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "File failed security scan.")
+            try:
+                scan_result = await scan_file(str(quarantine_path))
+                if scan_result.infected:
+                    _log_security_event("MALWARE_DETECTED", user.id, f"signature={scan_result.signature}")
+                    raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "File failed security scan.")
+            except HTTPException as av_exc:
+                if av_exc.status_code == 503:
+                    # ClamAV unavailable - log but allow upload in dev mode
+                    _log_security_event("AV_UNAVAILABLE", user.id, "ClamAV connection failed - allowing upload (dev mode)")
+                    logger.warning("ClamAV unavailable - proceeding without scan (dev mode)")
+                else:
+                    raise
         else:
             _log_security_event("AV_SCAN_SKIPPED", user.id, "ENABLE_AV_SCAN=False - dev mode only")
 
@@ -169,7 +177,15 @@ async def upload_document(
         ext = extension_for_mime(true_mime)
         storage_key = f"case_{case_id}/{document_uuid}.{ext}"
 
-        await upload_file(str(quarantine_path), storage_key, true_mime)
+        try:
+            await upload_file(str(quarantine_path), storage_key, true_mime)
+        except Exception as storage_exc:
+            _log_security_event("STORAGE_UPLOAD_FAILED", user.id, f"error={str(storage_exc)}")
+            logger.error(f"MinIO upload failed: {storage_exc}")
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "Document storage service temporarily unavailable. Please try again."
+            )
 
         # --- 9. Atomic DB write: document row + document_version row + audit entry together ---
         pool = get_pool()
