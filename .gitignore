@@ -12,7 +12,13 @@ __pycache__/
 # Environment
 .env
 .env.local
-*.env.*
+.env.*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
 
 # Dependencies
 venv/
