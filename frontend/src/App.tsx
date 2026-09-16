@@ -132,6 +132,10 @@ function App() {
   const [selectedReviewUser, setSelectedReviewUser] = useState<UserProfile | null>(null);
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadCaseId, setUploadCaseId] = useState("");
+  const [uploadTitle, setUploadTitle] = useState("");
+  const [uploadDocumentType, setUploadDocumentType] = useState("Evidence");
+  const [uploadConfidentialityLevel, setUploadConfidentialityLevel] = useState("1");
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadSuccess, setUploadSuccess] = useState(false);
@@ -970,6 +974,10 @@ function App() {
               onClick={() => {
                 navigateTo("Upload");
                 setSelectedFile(null);
+                  setUploadCaseId("");
+                  setUploadTitle("");
+                  setUploadDocumentType("Evidence");
+                  setUploadConfidentialityLevel("1");
                 setUploadSuccess(false);
                 setUploadProgress(0);
               }}
@@ -1185,6 +1193,64 @@ function App() {
                 />
               </div>
               
+              <div className="form-group" style={{ marginTop: "16px" }}>
+                <label>Case ID *</label>
+                <input
+                  type="text"
+                  placeholder="Enter case ID (e.g., CASE-2024-001)"
+                  value={uploadCaseId}
+                  onChange={(e) => setUploadCaseId(e.target.value)}
+                  disabled={uploading}
+                  required
+                />
+              </div>
+
+              <div className="form-group" style={{ marginTop: "16px" }}>
+                <label>Document Title *</label>
+                <input
+                  type="text"
+                  placeholder="Enter document title"
+                  value={uploadTitle}
+                  onChange={(e) => setUploadTitle(e.target.value)}
+                  disabled={uploading}
+                  required
+                />
+              </div>
+
+              <div className="form-group" style={{ marginTop: "16px" }}>
+                <label>Document Type *</label>
+                <select
+                  value={uploadDocumentType}
+                  onChange={(e) => setUploadDocumentType(e.target.value)}
+                  disabled={uploading}
+                  style={{ width: "100%", padding: "12px", background: "rgba(255,255,255,0.05)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)", color: "var(--text-primary)" }}
+                >
+                  <option value="Evidence">Evidence</option>
+                  <option value="Witness Statement">Witness Statement</option>
+                  <option value="Forensic Report">Forensic Report</option>
+                  <option value="Legal Document">Legal Document</option>
+                  <option value="Charge Sheet">Charge Sheet</option>
+                  <option value="FIR">FIR</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              <div className="form-group" style={{ marginTop: "16px" }}>
+                <label>Confidentiality Level *</label>
+                <select
+                  value={uploadConfidentialityLevel}
+                  onChange={(e) => setUploadConfidentialityLevel(e.target.value)}
+                  disabled={uploading}
+                  style={{ width: "100%", padding: "12px", background: "rgba(255,255,255,0.05)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)", color: "var(--text-primary)" }}
+                >
+                  <option value="1">Level 1 - Public</option>
+                  <option value="2">Level 2 - Internal</option>
+                  <option value="3">Level 3 - Confidential</option>
+                  <option value="4">Level 4 - Highly Confidential</option>
+                  <option value="5">Level 5 - Top Secret</option>
+                </select>
+              </div>
+              
               {selectedFile && (
                 <div style={{ marginTop: "16px", padding: "16px", background: "rgba(59, 130, 246, 0.1)", borderRadius: "var(--radius-md)" }}>
                   <strong>Selected:</strong> {selectedFile.name} ({Math.round(selectedFile.size / 1024)} KB)
@@ -1204,7 +1270,10 @@ function App() {
                 className="primary-login-button" 
                 style={{ marginTop: "20px", width: "100%" }} 
                 onClick={async () => {
-                  if (!selectedFile) return;
+                  if (!selectedFile || !uploadCaseId || !uploadTitle) {
+                    alert("Please fill in all required fields (Case ID and Document Title).");
+                    return;
+                  }
                   
                   setUploading(true);
                   setUploadProgress(10);
@@ -1253,6 +1322,10 @@ function App() {
                     setTimeout(() => {
                       setUploadSuccess(false);
                       setSelectedFile(null);
+                      setUploadCaseId("");
+                      setUploadTitle("");
+                      setUploadDocumentType("Evidence");
+                      setUploadConfidentialityLevel("1");
                       setUploadProgress(0);
                     }, 3000);
                     
@@ -1264,7 +1337,7 @@ function App() {
                     setUploading(false);
                   }
                 }}
-                disabled={!selectedFile || uploading}
+                disabled={!selectedFile || !uploadCaseId || !uploadTitle || uploading}
               >
                 {uploading ? "Processing..." : "Upload & Extract Text"}
               </button>
