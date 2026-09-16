@@ -293,6 +293,14 @@ async def mfa_verify(
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
 
+    # Fetch user's primary department ID
+    user_dept = db.execute(
+        text("SELECT department_id FROM user_departments WHERE user_id = :uid AND is_primary = TRUE"),
+        {"uid": challenge["user_uid"]},
+    ).fetchone()
+    
+    department_id = str(user_dept.department_id) if user_dept else None
+
     now = datetime.utcnow()
     payload = {
         "sub": str(user.id),
@@ -302,6 +310,10 @@ async def mfa_verify(
         "exp": now + timedelta(hours=8),
         "jti": str(uuid.uuid4()),
     }
+    
+    # Add department_id if available
+    if department_id:
+        payload["department_id"] = department_id
 
     with open(settings.JWT_PRIVATE_KEY_PATH, "r") as f:
         private_key = f.read()
