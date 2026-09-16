@@ -310,6 +310,7 @@ async def mfa_verify(
         "exp": now + timedelta(hours=8),
         "jti": str(uuid.uuid4()),
         "iss":settings.JWT_ISSUER,
+        "aud": settings.JWT_AUDIENCE,
     }
     
     # Add department_id if available
